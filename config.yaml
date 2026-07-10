@@ -1,0 +1,19 @@
+bot_uin: '3836808623'
+root: '3944649615'
+debug: false
+adapters:
+- type: napcat
+  platform: qq
+  enabled: true
+  config:
+    ws_uri: ws://localhost:3001
+    ws_token: NcatBot
+    webui_uri: http://localhost:6099
+    webui_token: m,}c{FYwpK2!{eof
+    enable_webui: true
+    skip_setup: true
+plugin:
+  plugins_dir: plugins
+  load_plugin: true
+  plugin_whitelist: []
+  plugin_blacklist: []

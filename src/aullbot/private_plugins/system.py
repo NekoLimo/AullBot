@@ -1,146 +1,141 @@
-# scr/private_plugins/system.py
-from .command_registry import command, command_registry
+# src/aullbot/private_plugins/system.py
+from .command_registry import command, command_registry, command_tools, ai_tools
 import base64
 import subprocess as sbs
 import os
 import datetime
 import base64
+import shlex
 
 
 def Todo(*args):
     """占位符"""
     return "Todo bro😭"
-   
-def help_command(args):
+
+def help_command(cmd: str = None) -> str: # type: ignore
     """
     help [命令名]
     无参数：列出所有可用命令名称。
     有参数：显示该命令的详细文档。
     """
-    if not args:
-        # 收集所有命令名称（排除 help 自身）
-        cmds = [cmd for cmd in command_registry.keys() if cmd != "help"]
-        # 返回换行分隔的命令列表
+    if cmd is None or cmd == "":
+        cmds = [name for name in command_registry.keys() if name != "help"]
         return "可用命令：\n" + "\n".join(cmds)
     else:
-        cmd = args[0]
         func = command_registry.get(cmd)
         if func is None:
             return f"未知命令：{cmd}"
         return func.__doc__.strip() if func.__doc__ else "该命令无帮助文档"
+    
+def help_ai_tools(tool: str = None) -> str: # type: ignore
+    """
+    help_ai_tools [工具名]
+    无参数：列出所有可用 AI 工具名称。
+    有参数：显示该工具的详细文档。
+    """
+    if tool is None or tool == "":
+        tools = list(command_tools.keys())
+        return "可用 AI 工具：\n" + "\n".join(tools)
+    else:
+        func = command_tools.get(tool)
+        if func is None:
+            return f"未知 AI 工具：{tool}"
+        return func.__doc__.strip() if func.__doc__ else "该工具无帮助文档"
 
-@command("say")
-def say(args):
+@command("/say")
+def say(text: str) -> str:
     """复读机"""
-    res = ""
-    for i in args:
-        res = res + i + " "
-    return res
+    return text
 
-# @command("sh")
-def run_shell_command(args):
-    """运行一条Linux命令"""
-    if not args:
-        return """运行一条Linux命令,不支持shell语法"""
-    forbidden_command = [
-        "rm", "dd", "mkfs", "fdisk", "parted", "chomd", "chown", "kill", "ssh", "reboot", "init", "telinit", ":(){", ".(){", "su", "sudo", "python3","python","wget","curl","alias","bash","sh","zsh","gcc","g++","pip","ping","sleep"
-    ]
-    print(args[0])
-    if args[0] in forbidden_command:
-        return "这个不可以喵！\n err:您运行的命令在黑名单中"
-    for i in forbidden_command:
-        if i in args[0]:
-            return "这个不可以喵\n err:您运行的命令在黑名单中"
-    try:
-        r = sbs.check_output(args,text=True,timeout=5,encoding="utf-8")
-        return r.strip()
-    except Exception as e:
-        return f'运行失败了喵（哭）\n err:{e}'
+@command("/vme50")
+def crazy_thursday_check():
+    """
+    疯狂疯狂星期四,9块9块9块9
+    """
+    # 获取当前日期时间
+    now = datetime.datetime.now()
+    # weekday(): 周一为0，周二为1，...，周日为6，所以周四为3
+    if now.weekday() == 3:
+        return "明天再来要一遍就给你"
+    else:
+        return "今天不是疯狂星期四凭什么来要"
 
-@command("flag")
-def return_flag(args):
-    """none"""
-    if os.environ.get('FLAG') == args[0]:
-        return f"{os.environ.get('FLAG')} is TRUE"
-   
-@command("时间")     
-def show_time(*args):
+@ai_tools("get_date")
+@command("/time")     
+def show_time() -> str:
     """显示时间"""
     now = datetime.datetime.now()
-    return f"现在是\n{now}喵！"
-  
-@command("b64de")  
-def base64_decode(args):
+    return f"{now}"
+
+@ai_tools("base64_decode")
+@command("/b64de")  
+def base64_decode(text: str) -> str:
     """
     将 Base64 字符串解码为 UTF-8 文本。
     参数： Base64 文本，多参数丢弃
     返回解码后的文本，失败时返回错误信息。
     """
-    if not args:
-        return '解码失败: args为空'
+    if not text:
+        return '解码失败: text为空'
     try:
-        decoded_bytes = base64.b64decode(args[0])
+        decoded_bytes = base64.b64decode(text)
         return decoded_bytes.decode('utf-8')
     except Exception as e:
         return f'解码失败: {e}'
 
-@command("b64en")
-def base64_encode(args):
+@ai_tools("base64_encode")
+@command("/b64en")
+def base64_encode(text: str) -> str:
     """Base64 编码：将文本转换为 base64 字符串"""
-    if not args:
-        return '编码失败: args为空'
-    res = ""
-    for i in args:
-        res = res + i + " "
+    if not text:
+        return '编码失败: text为空'
     try:
-        encoded_bytes = base64.b64encode(res.encode('utf-8'))
+        encoded_bytes = base64.b64encode(text.encode('utf-8'))
         return encoded_bytes.decode('utf-8')
     except Exception as e:
         return f'编码失败: {e}'
 
-@command("ascii_de")
-def ascii_decode(args):
+@ai_tools("ascii_decode")
+@command("/ascii_de")
+def ascii_decode(text: str) -> str:
     chars = []
-    for item in args:
+    for item in text.split():
         try:
             chars.append(chr(int(item)))
         except Exception as e:
             return f'解码失败: 无效的ASCII码 {item} - {e}'
     return ''.join(chars)
 
-@command("ascii_en")
-def ascii_encode(args):
+@ai_tools("ascii_encode")
+@command("/ascii_en")
+def ascii_encode(text: str) -> str:
     """文本转 ASCII 码列表：将文本转换为十进制 ASCII 码，空格分隔"""
-    if not args:
-        return '编码失败: args为空'
-    res = ""
-    for i in args:
-        res = res + i + " "
+    if not text:
+        return '编码失败: text为空'
     try:
         ascii_codes = []
-        for ch in res:
+        for ch in text:
             code = ord(ch)
             ascii_codes.append(str(code))
         return ' '.join(ascii_codes)
     except Exception as e:
         return f'编码失败: {e}'
 
-@command("txt2bin")
-def text_to_bin(args):
+@ai_tools("text_to_bin")
+@command("/txt2bin")
+def text_to_bin(text: str) -> str:
     """文本转二进制：UTF-8 编码，每个字节 8 位，空格分隔"""
-    if not args:
+    if not text:
         return '编码失败: 没有输入'
-    res = ""
-    for i in args:
-        res = res + i + " "
     try:
-        utf8_bytes = res.encode('utf-8')
+        utf8_bytes = text.encode('utf-8')
         return ' '.join(f'{byte:08b}' for byte in utf8_bytes)
     except Exception as e:
         return f'编码失败: {e}'
 
-@command("bin2txt")
-def bin_to_text(args):
+@ai_tools("bin_to_text")
+@command("/bin2txt")
+def bin_to_text(text: str) -> str:
     """二进制转文本：
     1. 若 args 长度 > 1，则每个元素是一个 8 位二进制串，合并后 UTF-8 解码。
     2. 若 args 长度为 1，则视作连续二进制串：
@@ -148,19 +143,19 @@ def bin_to_text(args):
        - 失败则尝试 4 位一组转十进制（空格分隔）；
        - 长度不合法返回 '无效的二进制'。
     """
-    if not args:
+    if not text:
         return '解码失败: 没有输入'
 
     # 情况1：多个独立二进制片段（即用户以空格分隔的输入）
-    if len(args) > 1:
+    if len(text.split()) > 1:
         try:
-            byte_data = bytes(int(part, 2) for part in args)
+            byte_data = bytes(int(part, 2) for part in text.split())
             return byte_data.decode('utf-8')
         except Exception as e:
             return f'解码失败: {e}'
 
     # 情况2：单个连续的二进制串
-    raw = args[0].strip()
+    raw = text.split()[0].strip()
     if not raw:
         return '解码失败: 空字符串'
 

@@ -13,7 +13,8 @@ from pathlib import Path
 import shlex
 import inspect
 
-from aullbot.private_plugins import command_route
+from aullbot.tools import command_route
+from aullbot.user_utils import command_manager_map
 from aullbot.chat import ai_chat_main, set_metadata
 from aullbot import context
 from aullbot.history_utils import HistoryManager
@@ -23,12 +24,12 @@ print(f"------------- 导入耗时：{end - start:.4f} 秒 -------------")
 
 # ========== 初始化 ============
 
-TYPE_GRUOP = 0
+TYPE_GROUP = 0
 TYPE_PRTVATE = 1
 
 BASE_DIR: Path = Path(__file__).parent.parent.parent  # 项目根目录
 CACHE_DIR: Path = BASE_DIR / ".cache"
-HISTORY_DIR: Path = BASE_DIR / ".history"
+HISTORY_DIR: Path = BASE_DIR / "bot_data"
 GROUP_HISTOYR: Path = HISTORY_DIR / "group"
 PRIVATE_HISTORY = HISTORY_DIR / "private"
 
@@ -55,9 +56,15 @@ async def find_command(command):
         tokens = shlex.split(command)
         command_name = tokens[0]
         command_args = tokens[1:]
-        if command_name in command_route:
+        route = command_route
+        if command_name == "/manager" or command_name == "/mg":
+            route = command_manager_map
+            command_name = command_args[0]
+            command_args = command_args[1:]
+        
+        if command_name in route:
             # command_args = " ".join(command_args).strip()
-            func = command_route[command_name]
+            func = route[command_name]
             if inspect.iscoroutinefunction(func):
                 sig = inspect.signature(func)
                 len_params = len(sig.parameters)
@@ -84,22 +91,38 @@ async def find_command(command):
             return COMMAND_NOT_FOUND
     except TypeError as e:
         return f"参数错误: {str(e)}"
-    except:
+    except Exception as e:
+        print(-255)
+        print(e)
         return COMMAND_NOT_FOUND
 
 
 # ========== 程序入口 ===========
 """群聊"""
 
-group_sender_massage_id = [0, 0, 0]
+group_message_queue = {}
+
+
 @registrar.qq.on_group_message(priority=100)
 async def is_group_me(event: GroupMessageEvent):
-    context.set_context(bot, TYPE_GRUOP, event.group_id, cache_path=str(CACHE_DIR))
+    group_id = str(event.group_id)
+    group_message_queue.setdefault(group_id, [0, 0, 0])
+    if not group_message_queue[group_id]:
+        group_message_queue[group_id] = [0, 0, 0]
 
-    if history_mgr.chat_exists(event.group_id, TYPE_GRUOP):
+    context.set_context(
+        bot,
+        TYPE_GROUP,
+        event.group_id,
+        cache_path=str(CACHE_DIR),
+        user_role=event.sender.role,
+        sender_id=event.sender.user_id,
+    )
+
+    if history_mgr.chat_exists(event.group_id, TYPE_GROUP):
         pass
     else:
-        history_mgr.add_chat_list(event.group_id, TYPE_GRUOP)
+        history_mgr.add_chat_list(event.group_id, TYPE_GROUP)
         group_list.append(event.group_id)
 
     # 获取用户的信息
@@ -133,39 +156,63 @@ async def is_group_me(event: GroupMessageEvent):
     msg_text = "".join(parts)  # 纯文本，保留空格
     msg_text = msg_text.strip()
     print(msg_text)
+
     if msg_text == "撤回":
-        await bot.api.qq.messaging.delete_msg(group_sender_massage_id[-1])
+        if group_message_queue[event.group_id][-1] == 0:
+            msg_result = await bot.api.qq.post_group_msg(
+                group_id=event.group_id, text="没发消息你撤回什么"
+            )
+            group_message_queue[event.group_id].append(msg_result["message_id"])
+            group_message_queue[event.group_id].pop(0)
+            return
+        await bot.api.qq.messaging.delete_msg(group_message_queue[event.group_id][-1])
+        group_message_queue[event.group_id].pop(-1)
+        group_message_queue[event.group_id].insert(0, 0)
         return
     text_to_send = await find_command(command=msg_text)
-    if isinstance(text_to_send, str) and text_to_send:
-        print(f"{text_to_send}")
-        msg_result = await bot.api.qq.post_group_msg(group_id=event.group_id, text=text_to_send)
-        # await event.reply(text=text_to_send, at_sender=False)
-        group_sender_massage_id.append(msg_result["message_id"])
-        group_sender_massage_id.pop(0)
+    if isinstance(text_to_send, str):
+        print(f"[Sysetm] 待发送:{text_to_send}")
+        if text_to_send:
+            msg_result = await bot.api.qq.post_group_msg(
+                group_id=event.group_id, text=text_to_send
+            )
+            # await event.reply(text=text_to_send, at_sender=False)
+            group_message_queue[event.group_id].append(msg_result["message_id"])
+            group_message_queue[event.group_id].pop(0)
         return
     if any(
         isinstance(seg, At) and str(seg.user_id) == str(self_id)
         for seg in event.message
     ):
         print("call ai")
-        result = await ai_chat_main(
+        msg_result = await ai_chat_main(
             chat_id=event.group_id,
             chat_type=0,
-            metadata=set_metadata(qq_number, nickname, msg_text),
+            metadata=set_metadata(qq_number, nickname, msg_text, "group"),
+            callback=bot.api.qq.post_group_msg,
+            group_id=event.group_id,
         )
-        print("[AI]", result)
-        msg_result = await bot.api.qq.post_group_msg(group_id=event.group_id, text=result)
-        group_sender_massage_id.append(msg_result["message_id"])
-        group_sender_massage_id.pop(0)
-            
+        if isinstance(msg_result, str):
+            msg_no_permission = await bot.api.qq.post_group_msg(group_id=event.group_id, text=msg_result)
+            group_message_queue[event.group_id].append(msg_no_permission["message_id"])
+        else:
+            group_message_queue[event.group_id].append(msg_result["message_id"])
+        group_message_queue[event.group_id].pop(0)
 
 
 """私聊"""
 
+
 @registrar.on_private_message(priority=100)
 async def is_private_me(event: PrivateMessageEvent):
-    context.set_context(bot, TYPE_PRTVATE, event.user_id, cache_path=str(CACHE_DIR))
+    context.set_context(
+        bot,
+        TYPE_PRTVATE,
+        event.user_id,
+        cache_path=str(CACHE_DIR),
+        user_role="owner",
+        sender_id=event.user_id,
+    )
 
     if history_mgr.chat_exists(event.user_id, TYPE_PRTVATE):
         pass
@@ -197,13 +244,16 @@ async def is_private_me(event: PrivateMessageEvent):
         await event.reply(text=text_to_send, at_sender=False)
     elif text_to_send == COMMAND_NOT_FOUND:
         print("[System] Calling ai")
-        result = await ai_chat_main(
+        msg_result = await ai_chat_main(
             chat_id=event.user_id,
-            chat_type=0,
-            metadata=set_metadata(qq_number, nickname, msg_text),
+            chat_type=1,
+            metadata=set_metadata(qq_number, nickname, msg_text, "private"),
+            callback=bot.api.qq.post_private_msg,
+            group_id=event.user_id,
         )
-        print("[AI]", result)
-        await bot.api.qq.post_private_msg(user_id=event.user_id, text=result)
+        if isinstance(msg_result, str):
+            await bot.api.qq.post_group_msg(group_id=event.group_id, text=msg_result)
+        
 
 
 # =========== 调用 ============

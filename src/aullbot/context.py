@@ -1,4 +1,4 @@
-# aullbot/context.py
+# src/aullbot/context.py
 from contextvars import ContextVar
 from typing import Optional
 from ncatbot.app import BotClient
@@ -8,12 +8,20 @@ class RequestContext:
     """存储一次请求（一条消息）所需的全局依赖"""
 
     def __init__(
-        self, bot: BotClient, chat_type: int, chat_id: int | str, cache_path: str
+        self,
+        bot: BotClient,
+        chat_type: int,
+        chat_id: int | str,
+        cache_path: str,
+        user_role: str | None,
+        sender_id: int | str | None,
     ):
         self.bot = bot
         self.chat_type = chat_type  # "group: 0"  "private: 1"
         self.chat_id = chat_id
         self.cache_path = cache_path
+        self.user_role = user_role
+        self.sender_id = sender_id
 
 
 # 定义上下文变量，默认值为 None
@@ -22,9 +30,18 @@ _current_context: ContextVar[Optional[RequestContext]] = ContextVar(
 )
 
 
-def set_context(bot: BotClient, chat_type: int, chat_id: int | str, cache_path: str):
+def set_context(
+    bot: BotClient,
+    chat_type: int,
+    chat_id: int | str,
+    cache_path: str,
+    user_role: str | None,
+    sender_id: int | str | None,
+):
     """在进入业务处理前，设置当前请求的上下文"""
-    _current_context.set(RequestContext(bot, chat_type, chat_id, cache_path))
+    _current_context.set(
+        RequestContext(bot, chat_type, chat_id, cache_path, user_role, sender_id)
+    )
 
 
 def get_context() -> RequestContext:
@@ -39,12 +56,22 @@ def get_context() -> RequestContext:
 def get_bot() -> BotClient:
     return get_context().bot
 
+
 def get_chat_type() -> int:
     return get_context().chat_type
+
 
 def get_chat_id() -> int | str:
     return get_context().chat_id
 
+
 def get_cache_path() -> str:
     return get_context().cache_path
 
+
+def get_user_role() -> str | None:
+    return get_context().user_role
+
+
+def get_sender_id():
+    return get_context().sender_id

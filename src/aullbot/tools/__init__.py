@@ -1,9 +1,9 @@
-# src/aullbot/private_plugins/__init__.py
+# src/aullbot/tools/__init__.py
 from typing import Any, List, Dict
 import inspect
 import json
-from . import system, play_music, tts, msg_tools
-from .command_registry import command_registry, command_tools
+from . import system, play_music, tts, msg_tools, myplugin
+from aullbot.command_registry import command_registry, command_tools
 from .system import help_command
 
 command_registry["/help"] = help_command

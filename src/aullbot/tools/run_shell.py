@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+
+################################################################################
+# 此模块由AI编写，不保证安全性，如果不使用，请不要在 src/aullbot/tools/__init__.py 中导入#
+################################################################################
 """
-安全沙盒命令执行模块（最终生产版）
+安全沙盒命令执行模块
 
 功能：
   在固定沙盒目录中执行受限 Linux 命令，支持：
@@ -24,7 +28,6 @@
 
 使用方法：
   from sandbox import run_shell_command
-  result = run_shell_command("ls -l /home")
 """
 
 import os
@@ -36,7 +39,7 @@ import time
 import logging
 import sys
 from typing import Optional, List, Set
-from .command_registry import ai_tools
+from aullbot.command_registry import ai_tools
 
 # ============================= 可调配置 =============================
 SECURE_BASE_DIR = os.path.abspath("/var/sandbox")   # 沙盒根目录

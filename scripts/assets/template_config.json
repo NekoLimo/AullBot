@@ -1,0 +1,45 @@
+{
+  "blacklist": [],
+  "permissions_definition": {
+    "CHANGE_PROMPT": "设置群提示词",
+    "MANAGE_RBAC": "更改角色权限",
+    "MANAGE_BLACKLIST": "拉黑",
+    "CHAT": "调用聊天",
+    "REGULAR_COMMAND": "调用普通指令"
+  },
+  "rbac": {
+    "permissions": {
+      "root": [
+        "*"
+      ],
+      "admin": [
+        "*"
+      ],
+      "user": [
+        "CHAT",
+        "REGULAR_COMMAND"
+      ]
+    },
+    "list": {
+      "admin": [
+        "3944649615",
+        "$GROUP_OWNER"
+      ],
+      "root": [
+        "3944649615",
+        "$GROUP_OWNER"
+      ],
+      "user": ["$*"]
+    }
+  },
+  "prompt": [],
+  "msg_trigger": {
+    "on_at": 250,
+    "on_keyword": 251,
+    "always": 252
+  },
+  "keywords": [
+    "小null"
+  ],
+  "be_triggered": 250
+}

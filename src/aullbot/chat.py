@@ -1,19 +1,25 @@
+# src/aullbot/chat.py
 import os
 import json
 import datetime
 import inspect
 from typing import Literal
 from openai import OpenAI
-from openai.types.chat import ChatCompletionMessage
-from aullbot.private_plugins import generate_ai_tools_spec, ai_tools_map
-from aullbot.history_utils import HistoryManager, serialize_messages
+from aullbot.tools import generate_ai_tools_spec, ai_tools_map
+from aullbot.history_utils import HistoryManager
+from aullbot.rbac import require_role_async
 
 ai_tools = generate_ai_tools_spec()
+
+alarm_schedule={}
+
+
+print(ai_tools)
 
 MAX_TOOL_ITERATIONS: int = 5
 MODEL: str = "deepseek-v4-pro"
 THINKING_ENABLED: str = "disabled"
-EFFORT:Literal["low", "high", "max"] = "max" # high == low
+EFFORT: Literal["low", "high", "max"] = "high"  # high == low
 
 
 client = OpenAI(
@@ -23,49 +29,59 @@ client = OpenAI(
 
 def call_ai(
     prompt: dict,
-    messages:list[dict],
+    messages: list[dict],
     model=MODEL,
     tools=None,
-    effort: Literal["low", "high", "max"]=EFFORT,
-    thinking=THINKING_ENABLED
+    effort: Literal["low", "high", "max"] = EFFORT,
+    thinking=THINKING_ENABLED,
 ):
-   if tools is not None:
+    if tools is not None:
         response = client.chat.completions.create(
             model=model,
             messages=[prompt] + messages,
             tools=tools,
             reasoning_effort=effort,
             extra_body={"thinking": {"type": thinking}},
-            stream=False
+            stream=False,
         )
         return response
-   else:
+    else:
         response = client.chat.completions.create(
             model=model,
             messages=[prompt] + messages,
             reasoning_effort=effort,
             extra_body={"thinking": {"type": thinking}},
-            stream=False
+            stream=False,
         )
         return response
 
 
-async def call_loop(prompt, messages, tools):  # 改为 async
+async def call_loop(
+    prompt, messages, tools, callback=None, group_id=None
+):  # 改为 async
     count = 0
     while True:
         count += 1
-        response = call_ai(
-            prompt=prompt,
-            messages=messages, 
-            tools=tools
-        )
+        response = call_ai(prompt=prompt, messages=messages, tools=tools)
         assistant_message = response.choices[0].message
         messages.append(assistant_message)
 
         if not assistant_message.tool_calls:
-            return messages
+            if callback:
+                msg_result = await callback(
+                    group_id, text=assistant_message.content
+                )
+                print("[AI]", assistant_message.content)
+                return (messages, msg_result)
 
-        if count >= MAX_TOOL_ITERATIONS:
+        if assistant_message.content:
+            if callback:
+                msg_result = await callback(
+                    group_id, text=assistant_message.content
+                )
+                print("[AI]", assistant_message.content)
+
+        if count > MAX_TOOL_ITERATIONS:
             for tc in assistant_message.tool_calls:
                 messages.append(
                     {
@@ -74,14 +90,16 @@ async def call_loop(prompt, messages, tools):  # 改为 async
                         "content": "工具调用次数到达上限",
                     }
                 )
-            final_response = call_ai(
-                prompt=prompt,
-                messages=messages
-            )
+                print("[Tools] 工具调用次数达到上限")
+            final_response = call_ai(prompt=prompt, messages=messages)
             final_message = final_response.choices[0].message
             messages.append(final_message)
-            return messages
-
+            if callback:
+                msg_result = await callback(
+                    group_id_, text=final_message.content
+                )
+                print("[AI]", final_message.content)
+                return (messages, msg_result)
         for tool_call in assistant_message.tool_calls:
             tool_name = tool_call.function.name  # type: ignore
             tool_args = json.loads(tool_call.function.arguments)  # type: ignore
@@ -118,17 +136,26 @@ async def call_loop(prompt, messages, tools):  # 改为 async
                         "content": tool_result,
                     }
                 )
-            
 
 
-manager = HistoryManager("./.history")
+manager = HistoryManager("./bot_data")
 
 
+@require_role_async("user")
 async def ai_chat_main(
-    chat_id: str | int, chat_type: int, metadata: str | dict
+    chat_id: str | int,
+    chat_type: int,
+    metadata: str | dict,
+    callback=None,
+    group_id=None,
 ) -> str:  # 改为 async
     metadata = str(metadata)
-    prompt = manager.read_json("./.history/system_prompt.json")
+    chat_route = {0:"group",1:"private"}
+    prompt = manager.read_json(f"./bot_data/{chat_route.get(int(chat_type))}/{chat_id}/config.json").get("prompt",[])
+    if prompt:
+        prompt = prompt[0]
+    else:
+        prompt = manager.read_json("./bot_data/system_prompt.json")
 
     if not manager.chat_exists(chat_id, chat_type):
         initial_messages = []
@@ -137,21 +164,19 @@ async def ai_chat_main(
 
     initial_messages.append({"role": "user", "content": metadata})
     history = await call_loop(
-        prompt=prompt, messages=initial_messages, tools=ai_tools
+        prompt=prompt,
+        messages=initial_messages,
+        tools=ai_tools,
+        callback=callback,
+        group_id=group_id,
     )  # await
 
-    manager.save_history(chat_id, chat_type, history)
-    if isinstance(history, list) and history:
-        if isinstance(history[0], (dict, ChatCompletionMessage)):
-            history = serialize_messages(history)
+    manager.save_history(chat_id, chat_type, history[0])
 
-    for msg in reversed(history):
-        if msg.get("role") == "assistant":
-            return msg.get("content") or ""
-    return ""
+    return history[1]
 
 
-def set_metadata(user_id: str | int | None, name: str | None, content: str) -> str:
+def set_metadata(user_id: str | int | None, name: str | None, content: str, chat_type:str) -> str:
     if user_id is None:
         user_id = 114514
     user_id = int(user_id)
@@ -162,6 +187,6 @@ def set_metadata(user_id: str | int | None, name: str | None, content: str) -> s
         "user_name": name,
         "current_time": formatted,
         "message_content": content,
+        "chat_type": chat_type
     }
     return str(metadata)
-

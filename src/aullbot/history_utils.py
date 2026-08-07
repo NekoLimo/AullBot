@@ -5,9 +5,12 @@ from openai.types.chat import ChatCompletionMessage
 from typing import List, Dict, Any, Union
 import shutil
 
-TYPE_MAP = {0: 'group', 1: 'private'}
+TYPE_MAP = {0: "group", 1: "private"}
 
-def serialize_messages(messages: List[Union[Dict[str, Any], ChatCompletionMessage]]) -> List[Dict[str, Any]]:
+
+def serialize_messages(
+    messages: List[Union[Dict[str, Any], ChatCompletionMessage]],
+) -> List[Dict[str, Any]]:
     """将可能包含 ChatCompletionMessage 对象的消息列表转为纯字典列表"""
     serialized = []
     for msg in messages:
@@ -25,8 +28,8 @@ def serialize_messages(messages: List[Union[Dict[str, Any], ChatCompletionMessag
                             "type": tc.type,
                             "function": {
                                 "name": tc.function.name,
-                                "arguments": tc.function.arguments
-                            }
+                                "arguments": tc.function.arguments,
+                            },
                         }
                         for tc in msg_copy["tool_calls"]
                     ]
@@ -43,8 +46,8 @@ def serialize_messages(messages: List[Union[Dict[str, Any], ChatCompletionMessag
                         "type": tc.type,
                         "function": {
                             "name": tc.function.name,
-                            "arguments": tc.function.arguments
-                        }
+                            "arguments": tc.function.arguments,
+                        },
                     }
                     for tc in msg.tool_calls
                 ]
@@ -56,13 +59,15 @@ def serialize_messages(messages: List[Union[Dict[str, Any], ChatCompletionMessag
             raise TypeError(f"Unsupported message type: {type(msg)}")
     return serialized
 
+
 # 反序列化其实就是直接返回，因为存储的就是字典，无需额外转换
 def _deserialize_messages(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return data
 
+
 class HistoryManager:
     def __init__(self, hist_path: str):
-        self.hist_path = hist_path    # .history 根目录
+        self.hist_path = hist_path  # bot_data 根目录
 
     @staticmethod
     def read_json(file_path: str) -> Any:
@@ -70,19 +75,19 @@ class HistoryManager:
             return []
         with open(file=file_path, mode="r", encoding="utf-8") as f:
             return json.load(f)
-        
+
     def chat_exists(self, chat_id: int | str, chat_type: int) -> bool:
         # 统一转为字符串比较，避免类型不一致
         chat_id = int(chat_id)
-        
+
         # 映射 chat_type 到子路径
         sub_path = TYPE_MAP.get(chat_type)
         if sub_path is None:
             raise ValueError("chat_type need 0 or 1")
-        
-        file_path = os.path.join(self.hist_path, sub_path, f'{sub_path}_list.json')
+
+        file_path = os.path.join(self.hist_path, sub_path, f"{sub_path}_list.json")
         try:
-            with open(file=file_path, mode='r', encoding='utf-8') as f:
+            with open(file=file_path, mode="r", encoding="utf-8") as f:
                 data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             self.add_chat_list(chat_id=chat_id, chat_type=chat_type)
@@ -94,21 +99,30 @@ class HistoryManager:
         sub_path: str | None = TYPE_MAP.get(chat_type)
         if sub_path is None:
             raise ValueError("chat_type need 0 or 1")
-        
-        chat_list_path: str = os.path.join(self.hist_path, sub_path, f"{sub_path}_list.json")
+
+        chat_list_path: str = os.path.join(
+            self.hist_path, sub_path, f"{sub_path}_list.json"
+        )
         chat_list: Any = self.read_json(chat_list_path)
         if chat_id not in chat_list:
             chat_list.append(chat_id)
             with open(file=chat_list_path, mode="w", encoding="utf-8") as f:
                 json.dump(chat_list, f, ensure_ascii=False)
-        
-        chat_history: str = os.path.join(self.hist_path, sub_path, f'{chat_id}')
+
+        chat_history: str = os.path.join(self.hist_path, sub_path, f"{chat_id}")
         if not os.path.exists(chat_history):
             os.makedirs(chat_history, exist_ok=True)
-            with open(file=os.path.join(chat_history, "history.json"), mode="w", encoding="utf-8") as f:
+            with open(
+                file=os.path.join(chat_history, "history.json"),
+                mode="w",
+                encoding="utf-8",
+            ) as f:
                 json.dump([], f, ensure_ascii=False)
-            shutil.copy(os.path.join(self.hist_path, "template_config.json"), os.path.join(chat_history, "config.json"))
-    
+            shutil.copy(
+                os.path.join(self.hist_path, "template_config.json"),
+                os.path.join(chat_history, "config.json"),
+            )
+
     def read_history(self, chat_id: str | int, chat_type: int) -> list[dict]:
         chat_id = str(chat_id)
         sub_path = TYPE_MAP.get(chat_type)
@@ -116,15 +130,15 @@ class HistoryManager:
             raise ValueError("chat_type need 0 or 1")
         chat_data: str = os.path.join(self.hist_path, sub_path, chat_id, "history.json")
         return self.read_json(chat_data)
-    
-    '''
+
+    """
     def add_history(self, chat_id: int | str, chat_type: int, content: dict) -> None:
         history = self.read_history(chat_id=chat_id, chat_type=chat_type)
         history.append(content)
         self.write_json(chat_id=chat_id, chat_type=chat_type, content=history)
-    '''
+    """
 
-    def write_json(self, chat_id: int | str, chat_type: int, content: Any) -> None:
+    def write_history(self, chat_id: int | str, chat_type: int, content: Any) -> None:
         chat_id = str(chat_id)
         sub_path = TYPE_MAP.get(chat_type)
         if sub_path is None:
@@ -138,7 +152,33 @@ class HistoryManager:
         with open(file=chat_data, mode="w", encoding="utf-8") as f:
             json.dump(content, f, ensure_ascii=False, indent=2)
 
-    def save_history(self, chat_id: int | str, chat_type: int, messages: List[Union[Dict, ChatCompletionMessage]]) -> None:
+    def save_history(
+        self,
+        chat_id: int | str,
+        chat_type: int,
+        messages: List[Union[Dict, ChatCompletionMessage]],
+    ) -> None:
         """保存完整的消息历史（覆盖写入）"""
         self.add_chat_list(chat_id=chat_id, chat_type=chat_type)
-        self.write_json(chat_id, chat_type, messages)
+        self.write_history(chat_id, chat_type, messages)
+
+    def load_config(
+        self,
+        chat_id: int | str,
+        chat_type: int,
+    ) -> Any:
+        chat_id = str(chat_id)
+        sub_path = TYPE_MAP.get(chat_type)
+        if sub_path is None:
+            raise ValueError("chat_type need 0 or 1")
+        chat_data: str = os.path.join(self.hist_path, sub_path, chat_id, "config.json")
+        return self.read_json(chat_data)
+
+    def save_config(self, chat_id, chat_type, content):
+        chat_id = str(chat_id)
+        sub_path = TYPE_MAP.get(chat_type)
+        if sub_path is None:
+            raise ValueError("chat_type need 0 or 1")
+        chat_data: str = os.path.join(self.hist_path, sub_path, chat_id, "config.json")
+        with open(file=chat_data, mode="w", encoding="utf-8") as f:
+            json.dump(content, f, ensure_ascii=False, indent=2)

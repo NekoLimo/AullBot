@@ -1,8 +1,10 @@
-# src/aullbot/private_plugins/msg_tools.py
+# src/aullbot/tools/msg_tools.py
 from pathlib import Path
 from .. import context
-from .command_registry import ai_tools
+from aullbot.command_registry import ai_tools
 from os.path import join
+from ncatbot.types import MessageArray
+from ncatbot.types.qq import parse_cq_code_to_onebot11
 
 def Todo(*args):
     """占位符"""
@@ -17,11 +19,11 @@ async def send_text(text: str) -> str:
     CHAT_ID = context.get_chat_id()
     try:
         if CHAT_TYPE == 0:  # group
-            await BOT.api.qq.post_group_msg(group_id=CHAT_ID, text=text, )
+            await BOT.api.qq.send_group_text(group_id=CHAT_ID, text=text)
             print("group:", text)
             return "succeeded"
         elif CHAT_TYPE == 1:  # private
-            await BOT.api.qq.post_private_msg(user_id=CHAT_ID, text=text)
+            await BOT.api.qq.send_private_text(user_id=CHAT_ID, text=text)
             print("private:", text)
             return "succeeded"
     except Exception as e:
@@ -50,6 +52,29 @@ async def send_sticker(sticker_name: str):
                 await BOT.api.qq.send_private_sticker(CHAT_ID, image=join("./meme", sticker_name))
                 print("private:", sticker_name)
                 return "succeeded"
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        return f"Error sending message: {e}"
+
+@ai_tools("send_qc")
+async def send_qc(text: str) -> str:
+    """
+    接受标准CQ码，例如：
+    [CQ:at,qq=3944649615] 这是一条AT消息
+    """
+    BOT = context.get_bot()
+    CHAT_TYPE = context.get_chat_type()
+    CHAT_ID = context.get_chat_id()
+    response = MessageArray.from_list(parse_cq_code_to_onebot11(text))
+    try:
+        if CHAT_TYPE == 0:  # group
+            await BOT.api.qq.post_group_array_msg(group_id=CHAT_ID, msg=response)
+            print("group:", text)
+            return "succeeded"
+        elif CHAT_TYPE == 1:  # private
+            await BOT.api.qq.post_private_array_msg(user_id=CHAT_ID, msg=response)
+            print("private:", text)
+            return "succeeded"
     except Exception as e:
         print(f"Error sending message: {e}")
         return f"Error sending message: {e}"

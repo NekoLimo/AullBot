@@ -1,12 +1,13 @@
-# scr/aullbot/private_plugins/play_music.py
+# scr/aullbot/tools/play_music.py
 import tqdm
 import os
 import requests
 from .. import context
-from .command_registry import command
+from aullbot.command_registry import command, ai_tools
+from aullbot.rbac import require_role, require_role_async
 
 
-def Todo(*args): 
+def Todo(*args):
     """占位符"""
     return "todo bro😭"
 
@@ -18,20 +19,21 @@ async def send_message(text=None, file=None):
     if chat_type == 0:  # group
         if text:
             await bot.api.qq.post_group_msg(group_id=chat_id, text=text)
-            print("group:", text)
+            print("[play_music] group:", text)
         elif file:
             await bot.api.qq.send_group_record(group_id=chat_id, file=file)
-            print("group:", file)
+            print("[play_music] group:", file)
     elif chat_type == 1:  # private
         if text:
             await bot.api.qq.post_private_msg(user_id=chat_id, text=text)
-            print("private:", text)
+            print("[play_music] private:", text)
         elif file:
             await bot.api.qq.send_private_record(user_id=chat_id, file=file)
-            print("private:", file)
+            print("[play_music] private:", file)
 
 
 @command("/music")
+@require_role_async("user")
 async def play_music(song_name: str) -> None | str | int:
     """
     使用网易云网页版音乐API
@@ -67,13 +69,13 @@ async def play_music(song_name: str) -> None | str | int:
         "Origin": "https://music.163.com",
     }
 
-    print("请求歌曲列表")
+    print("[play_music] 请求歌曲列表")
     response = requests.get(url, params=params, headers=headers, timeout=10)
     response.raise_for_status()
     data = response.json()
-    print("完成")
+    print("[play_music] 完成")
 
-    print("解析歌曲ID")
+    print("[play_music] 解析歌曲ID")
     if data.get("code") == 200:
         songs = data.get("result", {}).get("songs", [])
 
@@ -105,7 +107,7 @@ async def play_music(song_name: str) -> None | str | int:
         await send_message(text=f"请求失败 {data.get('code')}")
         return -1
 
-    print("开始下载")
+    print("[play_music] 开始下载")
     url = f"http://music.163.com/song/media/outer/url?id={song_id}.mp3"
     response = requests.get(url, stream=True)
 
@@ -132,7 +134,122 @@ async def play_music(song_name: str) -> None | str | int:
                     f.write(chunk)
                     pbar.update(len(chunk))
     try:
-        await send_message(file=os.path.join(context.get_cache_path(), f"{song_name}.mp3"))
+        await send_message(
+            file=os.path.join(context.get_cache_path(), f"{song_name}.mp3")
+        )
     except Exception as e:
         return f"{e} (可能下载了会员歌曲)"
     return None
+
+
+@ai_tools("search_music")
+@command("/search-music")
+@require_role("user")
+def search_music(song_name: str):
+    """
+    接受 song_name: str，返回歌曲列表
+    f"{idx}. {name} - {artists} (ID: {song_id}, fee: {fee})"
+    fee{
+        0:可下载
+        8:可下载
+        1:收费
+    }
+    """
+    url = "http://music.163.com/api/search/get/web"
+    params = {
+        "csrf_token": "",
+        "hlpretag": "",
+        "hlposttag": "",
+        "s": song_name,
+        "type": 1,
+        "offset": 0,
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Referer": "https://music.163.com/",
+        "Origin": "https://music.163.com",
+    }
+
+    print("[play_music] 请求歌曲列表")
+    response = requests.get(url, params=params, headers=headers, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    print("[play_music] 完成")
+
+    if data.get("code") == 200:
+        print("[play_music] 解析歌曲ID")
+        songs = data.get("result", {}).get("songs", [])
+
+        if not songs:
+            return "未找到歌曲"
+
+        song_list_string = ""
+        for idx, song in enumerate(songs, start=1):
+            song_id = song.get("id")
+            name = song.get("name")
+            artists = ", ".join(
+                artist.get("name", "") for artist in song.get("artists", [])
+            )
+            fee = song.get("fee")
+            print(f"{idx}. {name} - {artists} (ID: {song_id}, fee: {fee})")
+            song_list_string = (
+                song_list_string
+                + f"{idx}. {name} - {artists} (ID: {song_id}, fee: {fee})\n"
+            )
+        song_list_string = song_list_string.rstrip("\n")
+
+        return song_list_string
+
+    else:
+        print(f"请求失败 {data.get('code')}")
+        return f"请求失败 {data.get('code')}"
+
+
+@ai_tools("download_music")
+@command("/download-music")
+@require_role("user")
+def download_music(file_name: str, song_id: int):
+    """
+    接受 file_name: str,song_id: int
+    file_name: 作为音乐文件的文件名，无需输入.mp3后缀
+    song_id: 歌曲数字id，如果不知道可以调用 search_music 查看 ID
+    """
+    print("[play_music] 开始下载")
+    url = f"http://music.163.com/song/media/outer/url?id={song_id}.mp3"
+    response = requests.get(url, stream=True)
+
+    illegal_character = "\\/:*?\"<>|' "
+    for i in illegal_character:
+        if i in file_name:
+            file_name = file_name.replace(i, "_")
+
+    with open(os.path.join(context.get_cache_path(), f"{file_name}.mp3"), "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:  # 过滤掉 keep-alive 的空块
+                f.write(chunk)
+
+
+@ai_tools("send_music")
+@command("/send-music")
+@require_role_async("user")
+async def send_music(song_name: str):
+    """
+    接受 song_name: str
+    song_name: 保存时的文件,无需加.mp3后缀（忘记可调用list_cache查看缓存内容）
+    """
+    try:
+        await send_message(
+            file=os.path.join(context.get_cache_path(), f"{song_name}.mp3")
+        )
+    except Exception as e:
+        return f"{e} (可能下载了会员歌曲)"
+    return "succeed"
+
+
+@ai_tools("list_cache")
+@command("/list-cache")
+@require_role_async("user")
+def list_cache():
+    """查看缓存文件夹内容"""
+    return os.listdir(context.get_cache_path())
+

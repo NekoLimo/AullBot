@@ -1,8 +1,8 @@
-# scr/aullbot/private_plugins/play_music.py
+# scr/aullbot/tools/tts.py
 import os
 import requests
 from .. import context
-from .command_registry import ai_tools
+from aullbot.command_registry import ai_tools
 import random
 
 def Todo(*args): 

@@ -1,8 +1,9 @@
 # client.py (运行在内网Termux)
 import asyncio, websockets, json, subprocess
 
+
 async def loop():
-    uri = "ws://你的公网IP:8000/ws"  # 注意端口，中继的WS端口
+    uri = "ws://183.66.27.22:42664/ws"
     while True:
         try:
             async with websockets.connect(uri) as ws:
@@ -10,8 +11,14 @@ async def loop():
                 async for msg in ws:
                     data = json.loads(msg)
                     t = data["time"]
+                    cty = data["chat_type"]
+                    cty = "private" if cty else "group"
                     if 50 < t < 30000:
-                        subprocess.run(['termux-vibrate', '-d', str(t)])
-        except: await asyncio.sleep(5)
+                        # 替换成🐺子的适配
+                        subprocess.run(["termux-vibrate", "-d", str(t)])
+                        print({"status": "ok", "time": t})
+        except:
+            await asyncio.sleep(5)
+
 
 asyncio.run(loop())

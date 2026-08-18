@@ -1,8 +1,7 @@
 #!/usr/bin/bash
-# ============================================================
-# 文件名: start_bot.sh
+# ============================================================            # 文件名: start_bot.sh
 # 功能: 管理 Napcat + AullBot，支持 start/stop/status/restart/dev
-# 用法: 
+# 用法:
 #   ./start_bot.sh start        # 后台启动 Napcat + Bot（screen）
 #   ./start_bot.sh dev          # 前台运行 Bot（Napcat 后台启动）
 #   ./start_bot.sh stop         # 仅停止 Bot（Napcat 继续运行）
@@ -19,12 +18,9 @@ ENV_FILE="$PROJECT_DIR/.env"
 LOG_DIR="$PROJECT_DIR/logs"
 NAPCAST_SESSION="napcat"
 BOT_SESSION="aullbot"
-# Napcat 启动命令（包含唯一 QQ 号）
-NAPCAST_CMD="xvfb-run -a /root/Napcat/opt/QQ/qq --no-sandbox -q 3836808623"
-# Bot 启动命令
+# Bot 启动命令（不变）
 UV_CMD="uv run python -m aullbot.main"
-# 用于检测 Napcat 进程的关键字（确保唯一）
-NAPCAST_PROCESS_KEY="qq.*-q 3836808623"
+# Napcat 相关命令现在由 load_env 根据 .env 动态生成
 
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_DIR" || { echo "❌ 项目目录不存在: $PROJECT_DIR"; exit 1; }
@@ -34,10 +30,14 @@ load_env() {
     if [ -f "$ENV_FILE" ]; then
         set -a                # 自动导出所有变量
         source "$ENV_FILE"
+        # 根据 QQ_NUMBER 动态生成 Napcat 命令和进程匹配关键字
+        NAPCAST_CMD="xvfb-run -a /root/Napcat/opt/QQ/qq --no-sandbox -q ${QQ_NUMBER}"
+        NAPCAST_PROCESS_KEY="qq.*-q ${QQ_NUMBER}"
         set +a
         echo "✅ 已加载环境变量: $ENV_FILE"
     else
-        echo "⚠️ .env 文件不存在，请检查"
+        echo "❌ .env 文件不存在，请检查"
+        exit 1
     fi
     export TZ='Asia/Shanghai'
 }
@@ -91,7 +91,6 @@ start_bot_daemon() {
         log "✅ Bot 已在 screen 会话中运行"
         return 0
     fi
-    load_env
     log "🚀 后台启动 AullBot (screen) ..."
     screen -dmS "$BOT_SESSION" bash -c "cd $PROJECT_DIR && $UV_CMD 2>&1 | tee -a $LOG_DIR/bot_run.log"
     sleep 2
@@ -105,10 +104,8 @@ start_bot_daemon() {
 }
 
 # ---------- 前台运行 Bot（直接在当前终端） ----------
-run_bot_foreground() {   # 函数名保持不变，但被 dev 分支调用
-    load_env
+run_bot_foreground() {
     log "🚀 前台启动 AullBot（日志将直接输出到终端）..."
-    # 直接执行，脚本会阻塞，按 Ctrl+C 可终止 Bot
     exec $UV_CMD
 }
 
@@ -139,7 +136,6 @@ stop_bot() {
 stop_all() {
     stop_service "$BOT_SESSION"
     stop_service "$NAPCAST_SESSION"
-    # 如果 Napcat 进程残留（screen 已关但进程还在），精确 kill
     if is_napcat_running; then
         log "⚠️ 检测到残留 Napcat 进程，正在终止..."
         pkill -f "$NAPCAST_PROCESS_KEY" || true
@@ -166,6 +162,9 @@ status() {
     echo "------------------------------"
 }
 
+# ---------- 统一加载环境变量（必须在主逻辑前） ----------
+load_env
+
 # ---------- 主命令调度 ----------
 case "${1:-start}" in
     start)
@@ -173,7 +172,7 @@ case "${1:-start}" in
         start_bot_daemon || exit 1
         status
         ;;
-    dev)   # <-- 修改：将 run 改为 dev
+    dev)
         start_napcat || exit 1
         run_bot_foreground
         ;;
@@ -193,9 +192,9 @@ case "${1:-start}" in
         status
         ;;
     *)
-        echo "用法: $0 {start|dev|stop|stop-all|restart-bot|status}"   # <-- 修改
+        echo "用法: $0 {start|dev|stop|stop-all|restart-bot|status}"
         echo "  start       后台启动 Napcat + Bot (screen)"
-        echo "  dev         前台运行 Bot (Napcat 后台启动，调试用)"    # <-- 修改
+        echo "  dev         前台运行 Bot (Napcat 后台启动，调试用)"
         echo "  stop        仅停止 Bot，Napcat 继续运行"
         echo "  stop-all    停止 Napcat + Bot"
         echo "  restart-bot 重启 Bot（不重启 Napcat）"

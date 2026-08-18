@@ -13,11 +13,20 @@ async def loop():
                     t = data["time"]
                     cty = data["chat_type"]
                     cty = "private" if cty else "group"
+                    cid = data["chat_id"]
                     if 50 < t < 30000:
                         # 替换成🐺子的适配
                         subprocess.run(["termux-vibrate", "-d", str(t)])
-                        print({"status": "ok", "time": t})
-        except:
+                        print(
+                            {
+                                "status": "ok",
+                                "time": t,
+                                "chat_type": cty,
+                                "chat_id": cid,
+                            }
+                        )
+        except Exception as e:
+            print(e)
             await asyncio.sleep(5)
 
 

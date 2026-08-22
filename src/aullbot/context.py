@@ -15,16 +15,17 @@ class RequestContext:
         cache_path: str,
         user_role: str | None,
         sender_id: int | str | None,
+        raw_message: str = "",   # 新增：原始消息全文（保留换行）
     ):
         self.bot = bot
-        self.chat_type = chat_type  # "group: 0"  "private: 1"
+        self.chat_type = chat_type
         self.chat_id = chat_id
         self.cache_path = cache_path
         self.user_role = user_role
         self.sender_id = sender_id
+        self.raw_message = raw_message   # 存储原始字符串
 
 
-# 定义上下文变量，默认值为 None
 _current_context: ContextVar[Optional[RequestContext]] = ContextVar(
     "current_context", default=None
 )
@@ -37,22 +38,20 @@ def set_context(
     cache_path: str,
     user_role: str | None,
     sender_id: int | str | None,
+    raw_message: str = "",   # 新增参数
 ):
-    """在进入业务处理前，设置当前请求的上下文"""
     _current_context.set(
-        RequestContext(bot, chat_type, chat_id, cache_path, user_role, sender_id)
+        RequestContext(bot, chat_type, chat_id, cache_path, user_role, sender_id, raw_message)
     )
 
 
 def get_context() -> RequestContext:
-    """获取当前请求的上下文，若未设置则抛出异常"""
     ctx = _current_context.get()
     if ctx is None:
         raise RuntimeError("No context set. Did you forget to call set_context()?")
     return ctx
 
 
-# 为了方便，还可以提供快捷函数
 def get_bot() -> BotClient:
     return get_context().bot
 
@@ -75,3 +74,8 @@ def get_user_role() -> str | None:
 
 def get_sender_id():
     return get_context().sender_id
+
+
+# 新增：获取原始消息全文
+def get_raw_message() -> str:
+    return get_context().raw_message

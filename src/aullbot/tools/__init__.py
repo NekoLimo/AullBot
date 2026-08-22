@@ -2,7 +2,7 @@
 from typing import Any, List, Dict
 import inspect
 import json
-from . import system, play_music, tts, msg_tools, myplugin
+from . import system, play_music, tts, msg_tools, myplugin, img
 from aullbot.command_registry import command_registry, command_tools
 from .system import help_command
 

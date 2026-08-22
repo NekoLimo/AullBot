@@ -110,15 +110,6 @@ async def is_group_me(event: GroupMessageEvent):
     if not group_message_queue[group_id]:
         group_message_queue[group_id] = [0, 0, 0]
 
-    context.set_context(
-        bot,
-        TYPE_GROUP,
-        event.group_id,
-        cache_path=str(CACHE_DIR),
-        user_role=event.sender.role,
-        sender_id=event.sender.user_id,
-    )
-
     if history_mgr.chat_exists(event.group_id, TYPE_GROUP):
         pass
     else:
@@ -156,6 +147,16 @@ async def is_group_me(event: GroupMessageEvent):
     msg_text = "".join(parts)  # 纯文本，保留空格
     msg_text = msg_text.strip()
     print(msg_text)
+
+    context.set_context(
+        bot,
+        TYPE_GROUP,
+        event.group_id,
+        cache_path=str(CACHE_DIR),
+        user_role=event.sender.role,
+        sender_id=event.sender.user_id,
+        raw_message=msg_text,
+    )
 
     if msg_text == "撤回":
         if group_message_queue[event.group_id][-1] == 0:
@@ -201,8 +202,6 @@ async def is_group_me(event: GroupMessageEvent):
 
 
 """私聊"""
-
-
 @registrar.on_private_message(priority=100)
 async def is_private_me(event: PrivateMessageEvent):
     context.set_context(

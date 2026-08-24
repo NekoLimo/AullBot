@@ -13,24 +13,6 @@ def Todo(*args):
 
 stickers_path = Path(__file__).parent.parent.parent.parent / "meme"
 
-@ai_tools("send_message")
-async def send_text(text: str) -> str:
-    '''发送消息到群组或私聊'''
-    BOT = context.get_bot()
-    CHAT_TYPE = context.get_chat_type()
-    CHAT_ID = context.get_chat_id()
-    try:
-        if CHAT_TYPE == 0:  # group
-            await BOT.api.qq.send_group_text(group_id=CHAT_ID, text=text)
-            print("group:", text)
-            return "succeeded"
-        elif CHAT_TYPE == 1:  # private
-            await BOT.api.qq.send_private_text(user_id=CHAT_ID, text=text)
-            print("private:", text)
-            return "succeeded"
-    except Exception as e:
-        print(f"Error sending message: {e}")
-        return f"Error sending message: {e}"
 
 @ai_tools("get_stickers_list")
 def get_stickers_list() -> str:
@@ -65,9 +47,9 @@ async def send_sticker(sticker_name: str):
 @ai_tools("send_qc")
 async def send_qc(text: str) -> str:
     """
-    接受标准CQ码，例如：
-    [CQ:at,qq=3944649615] 这是一条AT消息
-    当需要使用CQ码，时请调用此工具
+    接受纯文本和标准CQ码，例如：
+    [CQ:at,qq=3944649615]这是一条AT消息
+    当需要单独发送消息或发送多条消息时，请调用此工具
     """
     BOT = context.get_bot()
     CHAT_TYPE = context.get_chat_type()

@@ -8,6 +8,8 @@ from openai import OpenAI
 from aullbot.tools import generate_ai_tools_spec, ai_tools_map
 from aullbot.history_utils import HistoryManager
 from aullbot.rbac import require_role_async
+from aullbot import context
+from ncatbot.types import MessageArray
 
 ai_tools = generate_ai_tools_spec()
 
@@ -57,7 +59,7 @@ def call_ai(
 
 
 async def call_loop(
-    prompt, messages, tools, callback=None, group_id=None
+    prompt, messages, tools, callback=None
 ):  # 改为 async
     count = 0
     while True:
@@ -67,19 +69,17 @@ async def call_loop(
         messages.append(assistant_message)
 
         if not assistant_message.tool_calls:
-            if callback:
-                msg_result = await callback(
-                    group_id, text=assistant_message.content
-                )
-                print("[AI]", assistant_message.content)
-                return (messages, msg_result)
+            msg_result = await callback(
+                text=assistant_message.content
+            )
+            print("[AI]", assistant_message.content)
+            return (messages, msg_result)
 
         if assistant_message.content:
-            if callback:
-                msg_result = await callback(
-                    group_id, text=assistant_message.content
-                )
-                print("[AI]", assistant_message.content)
+            msg_result = await callback(
+                text=assistant_message.content
+            )
+            print("[AI]", assistant_message.content)
 
         if count > MAX_TOOL_ITERATIONS:
             for tc in assistant_message.tool_calls:
@@ -94,12 +94,12 @@ async def call_loop(
             final_response = call_ai(prompt=prompt, messages=messages)
             final_message = final_response.choices[0].message
             messages.append(final_message)
-            if callback:
-                msg_result = await callback(
-                    group_id_, text=final_message.content
-                )
-                print("[AI]", final_message.content)
-                return (messages, msg_result)
+            i
+            msg_result = await callback(
+                text=final_message.content
+            )
+            print("[AI]", final_message.content)
+            return (messages, msg_result)
         for tool_call in assistant_message.tool_calls:
             tool_name = tool_call.function.name  # type: ignore
             tool_args = json.loads(tool_call.function.arguments)  # type: ignore
@@ -146,8 +146,7 @@ async def ai_chat_main(
     chat_id: str | int,
     chat_type: int,
     metadata: str | dict,
-    callback=None,
-    group_id=None,
+    callback=None
 ) -> str:  # 改为 async
     metadata = str(metadata)
     chat_route = {0:"group",1:"private"}
@@ -168,7 +167,6 @@ async def ai_chat_main(
         messages=initial_messages,
         tools=ai_tools,
         callback=callback,
-        group_id=group_id,
     )  # await
 
     manager.save_history(chat_id, chat_type, history[0])

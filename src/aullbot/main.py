@@ -8,6 +8,8 @@ start = time.perf_counter()
 from ncatbot.app import BotClient
 from ncatbot.core import registrar
 from ncatbot.event.qq import GroupMessageEvent, PrivateMessageEvent
+from ncatbot.types import MessageArray
+from ncatbot.types.qq import parse_cq_code_to_onebot11
 from ncatbot.types import *  # type: ignore
 from pathlib import Path
 import shlex
@@ -97,12 +99,27 @@ async def find_command(command):
         return COMMAND_NOT_FOUND
 
 
+
+async def send_qc(text: str) -> str:
+    """
+    接受标准CQ码，例如：
+    [CQ:at,qq=3944649615] 这是一条AT消息
+    当需要使用CQ码，时请调用此工具
+    """
+    BOT = context.get_bot()
+    CHAT_TYPE = context.get_chat_type()
+    CHAT_ID = context.get_chat_id()
+    response = MessageArray.from_list(parse_cq_code_to_onebot11(text))
+    if CHAT_TYPE == 0:  # group
+        ret = await BOT.api.qq.post_group_array_msg(group_id=CHAT_ID, msg=response)
+        return ret
+    elif CHAT_TYPE == 1:  # private
+        ret = await BOT.api.qq.post_private_array_msg(user_id=CHAT_ID, msg=response)
+        return ret
+
 # ========== 程序入口 ===========
 """群聊"""
-
 group_message_queue = {}
-
-
 @registrar.qq.on_group_message(priority=100)
 async def is_group_me(event: GroupMessageEvent):
     group_id = str(event.group_id)
@@ -188,10 +205,9 @@ async def is_group_me(event: GroupMessageEvent):
         print("call ai")
         msg_result = await ai_chat_main(
             chat_id=event.group_id,
-            chat_type=0,
             metadata=set_metadata(qq_number, nickname, msg_text, "group"),
-            callback=bot.api.qq.post_group_msg,
-            group_id=event.group_id,
+            callback=send_qc,
+            chat_type=0,
         )
         if isinstance(msg_result, str):
             msg_no_permission = await bot.api.qq.post_group_msg(group_id=event.group_id, text=msg_result)
@@ -245,10 +261,9 @@ async def is_private_me(event: PrivateMessageEvent):
         print("[System] Calling ai")
         msg_result = await ai_chat_main(
             chat_id=event.user_id,
-            chat_type=1,
             metadata=set_metadata(qq_number, nickname, msg_text, "private"),
-            callback=bot.api.qq.post_private_msg,
-            group_id=event.user_id,
+            callback=send_qc,
+            chat_type=1,
         )
         if isinstance(msg_result, str):
             await bot.api.qq.post_group_msg(group_id=event.group_id, text=msg_result)

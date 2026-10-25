@@ -251,5 +251,4 @@ async def send_music(song_name: str):
 @require_role_async("user")
 def list_cache():
     """查看缓存文件夹内容"""
-    return os.listdir(context.get_cache_path())
-
+    return str(os.listdir(context.get_cache_path()))

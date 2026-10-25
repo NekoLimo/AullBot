@@ -8,12 +8,10 @@ from openai import OpenAI
 from aullbot.tools import generate_ai_tools_spec, ai_tools_map
 from aullbot.history_utils import HistoryManager
 from aullbot.rbac import require_role_async
-from aullbot import context
-from ncatbot.types import MessageArray
 
 ai_tools = generate_ai_tools_spec()
 
-alarm_schedule={}
+alarm_schedule = {}
 
 
 print(ai_tools)
@@ -58,9 +56,7 @@ def call_ai(
         return response
 
 
-async def call_loop(
-    prompt, messages, tools, callback=None
-):  # 改为 async
+async def call_loop(prompt, messages, tools, callback=None):  # 改为 async
     count = 0
     while True:
         count += 1
@@ -69,16 +65,12 @@ async def call_loop(
         messages.append(assistant_message)
 
         if not assistant_message.tool_calls:
-            msg_result = await callback(
-                text=assistant_message.content
-            )
+            msg_result = await callback(text=assistant_message.content)
             print("[AI]", assistant_message.content)
             return (messages, msg_result)
 
         if assistant_message.content:
-            msg_result = await callback(
-                text=assistant_message.content
-            )
+            msg_result = await callback(text=assistant_message.content)
             print("[AI]", assistant_message.content)
 
         if count > MAX_TOOL_ITERATIONS:
@@ -94,10 +86,7 @@ async def call_loop(
             final_response = call_ai(prompt=prompt, messages=messages)
             final_message = final_response.choices[0].message
             messages.append(final_message)
-            i
-            msg_result = await callback(
-                text=final_message.content
-            )
+            msg_result = await callback(text=final_message.content)
             print("[AI]", final_message.content)
             return (messages, msg_result)
         for tool_call in assistant_message.tool_calls:
@@ -143,14 +132,13 @@ manager = HistoryManager("./bot_data")
 
 @require_role_async("user")
 async def ai_chat_main(
-    chat_id: str | int,
-    chat_type: int,
-    metadata: str | dict,
-    callback=None
+    chat_id: str | int, chat_type: int, metadata: str | dict, callback=None
 ) -> str:  # 改为 async
     metadata = str(metadata)
-    chat_route = {0:"group",1:"private"}
-    prompt = manager.read_json(f"./bot_data/{chat_route.get(int(chat_type))}/{chat_id}/config.json").get("prompt",[])
+    chat_route = {0: "group", 1: "private"}
+    prompt = manager.read_json(
+        f"./bot_data/{chat_route.get(int(chat_type))}/{chat_id}/config.json"
+    ).get("prompt", [])
     if prompt:
         prompt = prompt[0]
     else:
@@ -174,7 +162,9 @@ async def ai_chat_main(
     return history[1]
 
 
-def set_metadata(user_id: str | int | None, name: str | None, content: str, chat_type:str) -> str:
+def set_metadata(
+    user_id: str | int | None, name: str | None, content: str, chat_type: str
+) -> str:
     if user_id is None:
         user_id = 114514
     user_id = int(user_id)
@@ -185,6 +175,6 @@ def set_metadata(user_id: str | int | None, name: str | None, content: str, chat
         "user_name": name,
         "current_time": formatted,
         "message_content": content,
-        "chat_type": chat_type
+        "chat_type": chat_type,
     }
     return str(metadata)

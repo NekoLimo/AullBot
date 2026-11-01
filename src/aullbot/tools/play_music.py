@@ -2,10 +2,29 @@
 import tqdm
 import os
 import requests
-from .. import context
+from aullbot import context
 from aullbot.command_registry import command, ai_tools
 from aullbot.rbac import require_role, require_role_async
+from aullbot.module_meta import ModuleMeta
 
+MODULE = ModuleMeta(
+    name="play_music",
+    author="Limo",
+    description="网易云音乐搜索、下载与播放",
+    version="0.2.3",
+    default_enabled=True,
+    tags=("media", "music"),
+    readme="""
+命令：
+  /music <歌名>          搜索并播放第一首
+  /search-music <歌名>   仅搜索列表
+  /download-music        下载指定 ID
+  /send-music            发送已下载文件
+  /list-cache            查看缓存目录
+
+注意：无法下载会员/收费歌曲（fee=1）。
+""",
+)
 
 def Todo(*args):
     """占位符"""
@@ -13,6 +32,7 @@ def Todo(*args):
 
 
 async def send_message(text=None, file=None):
+    """在命令上下文里直接回复（不是主动推送，不走 push）。"""
     bot = context.get_bot()
     chat_type = context.get_chat_type()
     chat_id = context.get_chat_id()
@@ -81,6 +101,7 @@ async def play_music(song_name: str) -> None | str | int:
 
         if not songs:
             await send_message(text="未找到歌曲")
+            return
 
         song_list_string = ""
         for idx, song in enumerate(songs, start=1):
@@ -248,7 +269,7 @@ async def send_music(song_name: str):
 
 @ai_tools("list_cache")
 @command("/list-cache")
-@require_role_async("user")
+@require_role("user")
 def list_cache():
     """查看缓存文件夹内容"""
     return str(os.listdir(context.get_cache_path()))

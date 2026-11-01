@@ -5,12 +5,11 @@ from aullbot.rbac import (
     invalidate_config_cache,
     get_cached_config,
     command_manager,
+    global_roots,
 )
-from aullbot.history_utils import HistoryManager
+from aullbot.history_utils import manager
 from aullbot import context
 import json
-
-manager = HistoryManager("./bot_data/")
 
 
 def help_command(cmd: str = None) -> str:  # type: ignore
@@ -124,17 +123,28 @@ def remove_admin(user: str):
 @group_manager("ban")
 @require_role("admin")
 def ban(user: str):
-    """ban"""
+    """拉黑某个 QQ（只能存整数；root 不可被封禁）"""
     CHAT_ID = context.get_chat_id()
     CHAT_TYPE = context.get_chat_type()
     chat_config = get_cached_config(chat_id=CHAT_ID, chat_type=CHAT_TYPE)
-    if user is None or user == "":
-        return "未输入参数\n参数：user: str | qq_number"
 
-    if user in chat_config["blacklist"]:
+    raw = (user or "").strip()
+    if not raw:
+        return "未输入参数\n用法：ban <QQ号>"
+    if not raw.isdigit():
+        return "QQ 号必须是纯数字（不接受 @、昵称或其它字符）"
+
+    target = int(raw)
+    if str(target) in global_roots():
+        return "root 不可被封禁"
+
+    # 统一成 int 存储，避免 "123" 与 123 混存导致判定失效
+    blacklist = {int(x) for x in chat_config.get("blacklist", []) if str(x).isdigit()}
+    if target in blacklist:
         return "用户已存在"
 
-    chat_config["blacklist"].append(user)
+    blacklist.add(target)
+    chat_config["blacklist"] = sorted(blacklist)
     manager.save_config(chat_id=CHAT_ID, chat_type=CHAT_TYPE, content=chat_config)
 
     # 重要：保存后使缓存失效，下次调用会重新读取
@@ -146,17 +156,24 @@ def ban(user: str):
 @group_manager("unban")
 @require_role("admin")
 def unban(user: str):
-    """add-admin"""
+    """解除拉黑（参数为 QQ 号）"""
     CHAT_ID = context.get_chat_id()
     CHAT_TYPE = context.get_chat_type()
     chat_config = get_cached_config(chat_id=CHAT_ID, chat_type=CHAT_TYPE)
-    if user is None or user == "":
-        return "未输入参数\n参数：user: str | qq_number"
 
-    if user not in chat_config["blacklist"]:
+    raw = (user or "").strip()
+    if not raw:
+        return "未输入参数\n用法：unban <QQ号>"
+    if not raw.isdigit():
+        return "QQ 号必须是纯数字"
+
+    target = int(raw)
+    blacklist = {int(x) for x in chat_config.get("blacklist", []) if str(x).isdigit()}
+    if target not in blacklist:
         return "用户不存在"
 
-    chat_config["blacklist"].remove(user)
+    blacklist.discard(target)
+    chat_config["blacklist"] = sorted(blacklist)
     manager.save_config(chat_id=CHAT_ID, chat_type=CHAT_TYPE, content=chat_config)
 
     # 重要：保存后使缓存失效，下次调用会重新读取
@@ -175,7 +192,8 @@ def whoami():
     
     if SENDER_ID in chat_config.get("blacklist", []):
         return "Blacklist"
-    if SENDER_ID in chat_config.get("rbac", {}).get("list", {}).get("root", []):
+    # root 只看全局（bot_data/root.json 或 AULLBOT_ROOT），会话配置里不再有 root
+    if str(SENDER_ID) in global_roots():
         return "Root"
     if SENDER_ID in chat_config.get("rbac", {}).get("list", {}).get("admin", []):
         return "Admin"

@@ -18,3 +18,14 @@ test/
 .vscode/
 .github/
 config.yaml
+other/.env
+
+# 运行时产物 / 大件
+*.db
+*.db-wal
+*.db-shm
+qr.png
+.env.bak
+.env.bak-*
+*.json.bak-*
+tatus

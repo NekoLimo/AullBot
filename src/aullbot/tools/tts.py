@@ -4,6 +4,16 @@ import requests
 from .. import context
 from aullbot.command_registry import ai_tools
 import random
+from aullbot.module_meta import ModuleMeta
+
+MODULE = ModuleMeta(
+    name="tts",
+    author="Limo",
+    description="文字转语音（TTS）发送",
+    version="0.1.0",
+    default_enabled=True,
+    tags=("media", "voice"),
+)
 
 def Todo(*args): 
     """占位符"""
@@ -13,6 +23,7 @@ BASIC_URL = "http://127.0.0.1:2030"
 VOICE = "qingya"
 
 async def send_message(file):
+    """在命令/AI 工具上下文里直接回复（不是主动推送，不走 push）。"""
     bot = context.get_bot()
     chat_type = context.get_chat_type()
     chat_id = context.get_chat_id()

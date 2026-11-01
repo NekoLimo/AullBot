@@ -1,30 +1,32 @@
 # src/aullbot/chat.py
-import os
 import json
+from pathlib import Path
 import datetime
 import inspect
 from typing import Literal
 from openai import OpenAI
+from aullbot import settings
 from aullbot.tools import generate_ai_tools_spec, ai_tools_map
-from aullbot.history_utils import HistoryManager
+from aullbot.history_utils import manager
 from aullbot.rbac import require_role_async
-
-ai_tools = generate_ai_tools_spec()
+from aullbot.module_manager import mm
 
 alarm_schedule = {}
 
 
-print(ai_tools)
+# print(ai_tools)
 
-MAX_TOOL_ITERATIONS: int = 5
-MODEL: str = "deepseek-v4-pro"
-THINKING_ENABLED: str = "disabled"
-EFFORT: Literal["low", "high", "max"] = "high"  # high == low
+# 全部来自环境变量（.env），见 src/aullbot/settings.py
+MAX_TOOL_ITERATIONS: int = settings.MAX_TOOL_ITERATIONS
+MODEL: str = settings.MODEL
+THINKING_ENABLED: str = settings.THINKING
+EFFORT: Literal["low", "high", "max"] = settings.EFFORT  # type: ignore[assignment]
 
 
-client = OpenAI(
-    api_key=os.environ.get("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com"
-)
+# 客户端在导入期创建：宁可启动多花几秒，也不让用户发第一条消息时
+# 卡在 import openai 上（那里的延迟会被误认为机器人挂了）。
+client = OpenAI(api_key=settings.API_KEY, base_url=settings.BASE_URL)
+print(f"[chat] {settings.describe()}")
 
 
 def call_ai(
@@ -102,6 +104,15 @@ async def call_loop(prompt, messages, tools, callback=None):  # 改为 async
                         "content": "unknown tools",
                     }
                 )
+            elif not mm.is_tool_enabled(tool_name):
+                # 工具清单里已过滤，但模型仍可能凭上下文/幻觉发出调用
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": f"工具 {tool_name} 所属模块已被禁用，请勿再调用",
+                    }
+                )
             else:
                 # 用 inspect 判断异步函数，并用 await 直接调用
                 if inspect.iscoroutinefunction(tool_func):
@@ -127,22 +138,23 @@ async def call_loop(prompt, messages, tools, callback=None):  # 改为 async
                 )
 
 
-manager = HistoryManager("./bot_data")
-
-
 @require_role_async("user")
 async def ai_chat_main(
     chat_id: str | int, chat_type: int, metadata: str | dict, callback=None
 ) -> str:  # 改为 async
     metadata = str(metadata)
-    chat_route = {0: "group", 1: "private"}
-    prompt = manager.read_json(
-        f"./bot_data/{chat_route.get(int(chat_type))}/{chat_id}/config.json"
-    ).get("prompt", [])
+    # 走 load_config：路径由 HistoryManager 决定（不依赖工作目录），
+    # 且文件缺失时返回 {}，不会出现 [] .get() 崩溃
+    chat_config = manager.load_config(chat_id=chat_id, chat_type=chat_type)
+    prompt = chat_config.get("prompt") or []
     if prompt:
         prompt = prompt[0]
     else:
-        prompt = manager.read_json("./bot_data/system_prompt.json")
+        fallback = manager.read_json(str(Path(__file__).parents[2] / "bot_data" / "system_prompt.json"))
+        if not isinstance(fallback, dict) or not fallback.get("content"):
+            # 系统提示词缺失/损坏时给一个最小可用的，避免把 [] 塞进 messages
+            fallback = {"role": "system", "content": "You are a helpful assistant."}
+        prompt = fallback
 
     if not manager.chat_exists(chat_id, chat_type):
         initial_messages = []
@@ -153,7 +165,7 @@ async def ai_chat_main(
     history = await call_loop(
         prompt=prompt,
         messages=initial_messages,
-        tools=ai_tools,
+        tools=generate_ai_tools_spec(),
         callback=callback,
     )  # await
 

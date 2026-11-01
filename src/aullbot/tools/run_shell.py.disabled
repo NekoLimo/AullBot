@@ -40,6 +40,17 @@ import logging
 import sys
 from typing import Optional, List, Set
 from aullbot.command_registry import ai_tools
+"""
+from aullbot.module_meta import ModuleMeta
+
+MODULE = ModuleMeta(
+    name="run_shell",
+    author="Limo",
+    description="执行 shell 命令（危险）",
+    default_enabled=False,   # 敏感模块，默认关
+    tags=("dangerous", "shell"),
+)
+"""
 
 # ============================= 可调配置 =============================
 SECURE_BASE_DIR = os.path.abspath("/var/sandbox")   # 沙盒根目录

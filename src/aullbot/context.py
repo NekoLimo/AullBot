@@ -76,6 +76,5 @@ def get_sender_id():
     return get_context().sender_id
 
 
-# 新增：获取原始消息全文
 def get_raw_message() -> str:
     return get_context().raw_message

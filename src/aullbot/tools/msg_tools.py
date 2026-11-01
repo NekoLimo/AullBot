@@ -6,6 +6,18 @@ from os.path import join
 from ncatbot.types import MessageArray
 from ncatbot.types.qq import parse_cq_code_to_onebot11
 
+# src/aullbot/tools/msg_tools.py 顶部加
+from aullbot.module_meta import ModuleMeta
+
+MODULE = ModuleMeta(
+    name="msg_tools",
+    author="Limo",
+    description="消息工具：表情包列表、发送表情包、发送 CQ 码",
+    default_enabled=True,
+    tags=("core", "message"),
+)
+
+
 def Todo(*args):
     """占位符"""
     return "Todo bro😭"
@@ -48,7 +60,7 @@ async def send_sticker(sticker_name: str):
 async def send_qc(text: str) -> str:
     """
     接受纯文本和标准CQ码，例如：
-    [CQ:at,qq=3944649615]这是一条AT消息
+    [CQ:at,qq=100000002]这是一条AT消息
     当需要单独发送消息或发送多条消息时，请调用此工具
     """
     BOT = context.get_bot()

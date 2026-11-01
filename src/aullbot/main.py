@@ -19,7 +19,9 @@ from aullbot.tools import command_route
 from aullbot.user_utils import command_manager_map
 from aullbot.chat import ai_chat_main, set_metadata
 from aullbot import context
-from aullbot.history_utils import HistoryManager
+from aullbot import push
+from aullbot.history_utils import manager as history_mgr
+from aullbot.module_manager import mm
 
 end = time.perf_counter()
 print(f"------------- 导入耗时：{end - start:.4f} 秒 -------------")
@@ -39,7 +41,6 @@ CACHE_DIR.mkdir(exist_ok=True)
 GROUP_HISTOYR.mkdir(exist_ok=True)
 PRIVATE_HISTORY.mkdir(exist_ok=True)
 
-history_mgr = HistoryManager(str(HISTORY_DIR))
 GROUP_LIST_FILE: Path = HISTORY_DIR / "group_list.json"
 group_list = history_mgr.read_json(str(GROUP_LIST_FILE))
 
@@ -51,6 +52,8 @@ bot = BotClient()
 """###### 已转移 ######"""
 # ========== 解析命令 ===========
 COMMAND_NOT_FOUND = -255
+# 不受模块开关影响的命令：避免 /module disable 把自己锁死后无法再启用
+UNGUARDED_COMMANDS = frozenset({"/module"})
 
 
 async def find_command(command):
@@ -65,30 +68,40 @@ async def find_command(command):
             command_args = command_args[1:]
         
         if command_name in route:
+            if (
+                command_name not in UNGUARDED_COMMANDS
+                and not mm.is_command_enabled(command_name)
+            ):
+                owner = mm.command_owner.get(command_name, "未知模块")
+                if owner not in mm.modules:
+                    # 模块导入失败时命令可能已注册，此时它根本没被加载过，不是"被禁用"
+                    return (
+                        f"命令 {command_name} 所属模块 {owner} 未成功加载，"
+                        f"请查看启动日志里的 [tools] 报错"
+                    )
+                return (
+                    f"命令 {command_name} 所在模块 {owner} 已被禁用，"
+                    f"可用 /module enable {owner} 重新开启"
+                )
             # command_args = " ".join(command_args).strip()
             func = route[command_name]
-            if inspect.iscoroutinefunction(func):
-                sig = inspect.signature(func)
-                len_params = len(sig.parameters)
-                if len_params == 1:
-                    command_args = " ".join(command_args).strip()
-                    ret = await func(command_args)
-                    return ret if ret else None
-                ret = await func(*command_args[:len_params])
-                if ret:
-                    return ret
-                return None
+            sig = inspect.signature(func)
+            len_params = len(sig.parameters)
+            if len_params == 1:
+                command_args = " ".join(command_args).strip()
             else:
-                sig = inspect.signature(func)
-                len_params = len(sig.parameters)
-                if len_params == 1:
-                    command_args = " ".join(command_args).strip()
-                    ret = func(command_args)
-                    return ret if ret else None
-                ret = func(*command_args[:len_params])
-                if ret:
-                    return ret
-                return None
+                command_args = command_args[:len_params]
+
+            # 关键：异步函数若被同步装饰器包过（例如 async def 配 @require_role），
+            # iscoroutinefunction 会返回 False，调用结果是一个没人 await 的协程，
+            # 表现为「命令有反应但不返回内容」。这里统一兜底 await。
+            if inspect.iscoroutinefunction(func):
+                ret = await func(command_args) if isinstance(command_args, str) else await func(*command_args)
+            else:
+                ret = func(command_args) if isinstance(command_args, str) else func(*command_args)
+                if inspect.isawaitable(ret):
+                    ret = await ret
+            return ret if ret else None
         else:
             return COMMAND_NOT_FOUND
     except TypeError as e:
@@ -103,7 +116,7 @@ async def find_command(command):
 async def send_qc(text: str) -> str:
     """
     接受标准CQ码，例如：
-    [CQ:at,qq=3944649615] 这是一条AT消息
+    [CQ:at,qq=100000002] 这是一条AT消息
     当需要使用CQ码，时请调用此工具
     """
     BOT = context.get_bot()
@@ -118,6 +131,35 @@ async def send_qc(text: str) -> str:
         return ret
 
 # ========== 程序入口 ===========
+_started = False
+
+
+async def _lazy_start():
+    global _started
+    if _started:
+        return
+    _started = True
+    # 绑定主动推送（后台任务/定时任务都通过 aullbot.push 发消息）
+    push.bind(bot)
+    from aullbot.tools import _pending_registers
+    for reg in _pending_registers:
+        try:
+            reg(bot)
+        except Exception as e:
+            print(f"[main] 模块 register 失败: {e}")
+    await mm.load_all(bot)
+
+
+@bot.on_startup()
+async def _on_startup():
+    """进程启动即初始化模块后台任务（如 B站推送），不再依赖第一条消息。"""
+    print("[main] 启动完成，初始化模块后台任务")
+    try:
+        await _lazy_start()
+    except Exception as e:
+        print(f"[main] 启动初始化失败: {type(e).__name__}: {e}")
+
+
 """群聊"""
 group_message_queue = {}
 @registrar.qq.on_group_message(priority=100)
@@ -188,13 +230,14 @@ async def is_group_me(event: GroupMessageEvent):
         group_message_queue[event.group_id].insert(0, 0)
         return
     text_to_send = await find_command(command=msg_text)
-    if isinstance(text_to_send, str):
-        print(f"[Sysetm] 待发送:{text_to_send}")
-        if text_to_send:
+    # 只有 -255 才是"没命中命令"；None/"" 表示命令已处理（自己发过消息），
+    # 不能再落到 AI 分支，否则 /img、/music 这类会二次触发模型
+    if text_to_send != COMMAND_NOT_FOUND:
+        if isinstance(text_to_send, str) and text_to_send:
+            print(f"[Sysetm] 待发送:{text_to_send}")
             msg_result = await bot.api.qq.post_group_msg(
                 group_id=event.group_id, text=text_to_send
             )
-            # await event.reply(text=text_to_send, at_sender=False)
             group_message_queue[event.group_id].append(msg_result["message_id"])
             group_message_queue[event.group_id].pop(0)
         return
@@ -215,19 +258,12 @@ async def is_group_me(event: GroupMessageEvent):
         else:
             group_message_queue[event.group_id].append(msg_result["message_id"])
         group_message_queue[event.group_id].pop(0)
+    await _lazy_start()
 
 
 """私聊"""
 @registrar.on_private_message(priority=100)
 async def is_private_me(event: PrivateMessageEvent):
-    context.set_context(
-        bot,
-        TYPE_PRTVATE,
-        event.user_id,
-        cache_path=str(CACHE_DIR),
-        user_role="owner",
-        sender_id=event.user_id,
-    )
 
     if history_mgr.chat_exists(event.user_id, TYPE_PRTVATE):
         pass
@@ -252,9 +288,19 @@ async def is_private_me(event: PrivateMessageEvent):
     msg_text = "".join(parts)  # 纯文本，保留空格
     msg_text = msg_text.strip()
     print(msg_text)
+    
+    context.set_context(
+        bot,
+        TYPE_PRTVATE,
+        event.user_id,
+        cache_path=str(CACHE_DIR),
+        user_role="owner",
+        sender_id=event.user_id,
+        raw_message=msg_text,
+    )
 
     text_to_send = await find_command(command=msg_text)
-    if text_to_send and type(text_to_send) == str:
+    if isinstance(text_to_send, str) and text_to_send:
         print(f"\n{text_to_send}")
         await event.reply(text=text_to_send, at_sender=False)
     elif text_to_send == COMMAND_NOT_FOUND:
@@ -266,8 +312,8 @@ async def is_private_me(event: PrivateMessageEvent):
             chat_type=1,
         )
         if isinstance(msg_result, str):
-            await bot.api.qq.post_group_msg(group_id=event.group_id, text=msg_result)
-        
+            await bot.api.qq.post_private_msg(user_id=event.user_id, text=msg_result)
+    await _lazy_start()
 
 
 # =========== 调用 ============

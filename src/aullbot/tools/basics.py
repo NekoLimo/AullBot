@@ -1,52 +1,80 @@
-# src/aullbot/tools/system.py
-from aullbot.command_registry import command, command_registry, command_tools, ai_tools
-from aullbot.rbac import require_role
+# src/aullbot/tools/Basics.py
+from aullbot.command_registry import command, ai_tools
+from aullbot.rbac import require_role, require_role_async
+from aullbot.module_meta import ModuleMeta
+import asyncio
 import base64
 import datetime
+
+from aullbot import context, push
+
+MODULE = ModuleMeta(
+    name="basics",
+    author="Limo",
+    description="基础命令：时间、Base64/ASCII/二进制编解码",
+    version="0.2.5",
+    default_enabled=True,   # 核心模块，别关
+    tags=("core",),
+    readme="提供基础命令。",
+)
 
 
 def Todo(*args):
     """占位符"""
     return "Todo bro😭"
 
-
-def help_command(cmd: str = None) -> str:  # type: ignore
-    """
-    help [命令名]
-    无参数：列出所有可用命令名称。
-    有参数：显示该命令的详细文档。
-    """
-    if cmd is None or cmd == "":
-        cmds = [name for name in command_registry.keys() if name != "help"]
-        return "可用命令：\n" + "\n".join(cmds)
-    else:
-        func = command_registry.get(cmd)
-        if func is None:
-            return f"未知命令：{cmd}"
-        return func.__doc__.strip() if func.__doc__ else "该命令无帮助文档"
+SAY_MAX_DELAY = 86400  # 最长延迟 1 天
+_say_tasks: set[asyncio.Task] = set()
 
 
-def help_ai_tools(tool: str = None) -> str:  # type: ignore
-    """
-    help_ai_tools [工具名]
-    无参数：列出所有可用 AI 工具名称。
-    有参数：显示该工具的详细文档。
-    """
-    if tool is None or tool == "":
-        tools = list(command_tools.keys())
-        return "可用 AI 工具：\n" + "\n".join(tools)
-    else:
-        func = command_tools.get(tool)
-        if func is None:
-            return f"未知 AI 工具：{tool}"
-        return func.__doc__.strip() if func.__doc__ else "该工具无帮助文档"
+async def _delayed_say(delay: float, chat_type: int, chat_id, body: str) -> None:
+    try:
+        await asyncio.sleep(delay)
+        if not await push.send(chat_type, chat_id, body):
+            print(f"[say] 定时发送失败 chat={chat_type}/{chat_id}")
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"[say] 定时发送异常: {type(e).__name__}: {e}")
 
 
 @command("/say")
-@require_role("user")
-def say(text: str) -> str:
-    """复读机"""
-    return text
+@require_role_async("user")
+async def say(text: str = "", delay=0) -> str:
+    """复读机：/say 内容 [延迟秒数]（延迟默认 0）
+
+    参数按 shell 规则切分，内容含空格时请用引号：
+        /say 你好
+        /say "a b c" 30      # 30 秒后发送 "a b c"
+        /say "今天 天气 不错"
+    """
+    body = (text or "").strip()
+
+    # 框架按空格切参数，delay 拿到的是字符串；
+    # 不是数字说明用户只是想发一句带空格的话，把它拼回正文
+    secs = 0.0
+    if delay not in (0, None) and str(delay).strip():
+        raw_delay = str(delay).strip()
+        try:
+            secs = float(raw_delay)
+        except ValueError:
+            body = f"{body} {raw_delay}".strip()
+
+    if not body:
+        return '用法：/say 内容 [延迟秒数]（延迟默认 0）\n内容含空格请加引号，如 /say "a b c" 30'
+    if secs < 0:
+        return "延迟不能是负数"
+    if secs > SAY_MAX_DELAY:
+        return f"延迟不能超过 {SAY_MAX_DELAY} 秒（1 天）"
+    if secs <= 0:
+        return body
+
+    task = asyncio.create_task(
+        _delayed_say(secs, context.get_chat_type(), context.get_chat_id(), body)
+    )
+    _say_tasks.add(task)
+    task.add_done_callback(_say_tasks.discard)
+    return f"已排队：{int(secs)} 秒后发送（共 {len(body)} 字）"
 
 
 @ai_tools("get_date")

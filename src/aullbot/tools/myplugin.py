@@ -8,6 +8,16 @@ from aullbot.rbac import require_role
 from aullbot.context import get_chat_type, get_chat_id
 from requests import get
 
+# src/aullbot/tools/myplugin.py 顶部加
+from aullbot.module_meta import ModuleMeta
+
+MODULE = ModuleMeta(
+    name="myplugin",
+    author="Limo",
+    description="杂项插件：震动设备等",
+    default_enabled=True,
+    tags=("misc",),
+)
 
 @ai_tools("vibrate")
 @command("/震动")
@@ -20,11 +30,11 @@ def vibrate(time: int = None):
         time = 500
     try:
         time = int(time)
-    except:
+    except (TypeError, ValueError):
         return "参数错误"
     try:
         resp = get(f"http://127.0.0.1:1145/vib/{time}/{chat_type}/{chat_id}")
-    except:
+    except Exception:
         return "服务未启动"
     return str(resp.json())
 

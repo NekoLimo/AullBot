@@ -148,6 +148,7 @@ name = "aullbot"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "bpi-py" },
     { name = "fastapi" },
     { name = "ncatbot5" },
     { name = "openai" },
@@ -158,12 +159,26 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bpi-py", specifier = ">=0.3.1" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "ncatbot5", specifier = ">=5.5.6" },
     { name = "openai", specifier = ">=2.44.0" },
     { name = "openai-function-calling", specifier = ">=2.6.0" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "requests", specifier = ">=2.34.2" },
+]
+
+[[package]]
+name = "bpi-py"
+version = "0.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/08/ff/795947a9d1fd179b0485d39ceb9a3b7c28cee2aad63eff9cff0db1fd094e/bpi_py-0.3.1.tar.gz", hash = "sha256:1a5c28a6863904b4871bbdf57df1b46edf277dbd7b4409f94f7963e024773395", size = 88429, upload-time = "2026-10-08T15:21:38.134Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/44/b545a655b206bbb01fd0147fc529f87b4752976284012f9fbba225da26ac/bpi_py-0.3.1-py3-none-any.whl", hash = "sha256:5167e951648ec78c23c3dd98f3b0ad7dd577ee841749cae22c6f98479f2e1b7e", size = 134179, upload-time = "2026-10-08T15:21:36.767Z" },
 ]
 
 [[package]]

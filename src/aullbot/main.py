@@ -79,10 +79,8 @@ async def find_command(command):
                         f"命令 {command_name} 所属模块 {owner} 未成功加载，"
                         f"请查看启动日志里的 [tools] 报错"
                     )
-                return (
-                    f"命令 {command_name} 所在模块 {owner} 已被禁用，"
-                    f"可用 /module enable {owner} 重新开启"
-                )
+                # 模块被禁用是主人主动关的，静默忽略即可（不回复、不进 AI）
+                return None
             # command_args = " ".join(command_args).strip()
             func = route[command_name]
             sig = inspect.signature(func)

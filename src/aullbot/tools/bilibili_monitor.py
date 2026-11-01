@@ -488,6 +488,11 @@ def _as_text(value) -> str:
             inner = value.get(key)
             if isinstance(inner, str) and inner:
                 return inner
+        # opus.summary 的富文本兜底：把 rich_text_nodes 里的 text 拼起来
+        nodes = value.get("rich_text_nodes")
+        if isinstance(nodes, list):
+            parts = [_as_text(n) for n in nodes]
+            return "".join(p for p in parts if p)
         return ""
     return "" if value is None else str(value)
 
@@ -520,6 +525,13 @@ def _dyn_text(item) -> str:
     text = _as_text(_dig(md, "desc", "text", default=""))
     if text:
         return text
+    title = _as_text(_dig(md, "major", "opus", "title", default=""))
+    summary = _as_text(_dig(md, "major", "opus", "summary", default=""))
+    if title and summary and summary not in title:
+        return f"{title}\n{summary}"
+    if title or summary:
+        return title or summary
+
     for path in (("major", "opus", "title"), ("major", "opus", "summary"),
                  ("major", "archive", "title"), ("major", "article", "title"),
                  ("major", "live_rcmd", "title"), ("major", "common", "title")):
@@ -626,7 +638,9 @@ async def _fetch_dynamics(client, uid: int) -> list:
     """
     data = await client._get_payload(
         SPACE_FEED_PATH,
-        {"host_mid": str(uid), "offset": ""},
+        # itemOpusStyle：不带这个参数时，图文动态只返回 major.draw（无 desc），
+        # 正文和标题全丢；带上后变成 major.opus，才有 title/summary
+        {"host_mid": str(uid), "offset": "", "features": "itemOpusStyle"},
         _SPACE_ADAPTER,
     )
     return list((data or {}).get("items") or [])

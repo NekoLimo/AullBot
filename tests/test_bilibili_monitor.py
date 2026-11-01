@@ -155,6 +155,22 @@ def test_parse() -> None:
           bm._dyn_text(archive("2", "BV1x", "视频标题")) == "视频标题")
     check("纯文字动态用 desc.text",
           bm._dyn_text(dyn("3", "纯文字")) == "纯文字")
+
+    # 图文动态：必须带 features=itemOpusStyle 才有 opus 结构（见 _fetch_dynamics）
+    check("OPUS 只有摘要时输出摘要",
+          bm._dyn_text(opus("3b", "希望我bot还在")) == "希望我bot还在",
+          repr(bm._dyn_text(opus("3b", "希望我bot还在"))))
+    opus_item = dyn("3c", "", 1000, major="MAJOR_TYPE_OPUS", extra_major={
+        "opus": {"title": "别爆", "summary": {"text": "希望我bot还在"},
+                 "pics": [{"url": "http://i0/p.jpg"}]}})
+    check("OPUS 标题与摘要合并", bm._dyn_text(opus_item) == "别爆\n希望我bot还在",
+          repr(bm._dyn_text(opus_item)))
+
+    opus_rich = dyn("3d", "", 1000, major="MAJOR_TYPE_OPUS", extra_major={
+        "opus": {"summary": {"rich_text_nodes": [
+            {"text": "第一段"}, {"text": "第二段"}]}}})
+    check("OPUS 富文本节点拼接", bm._dyn_text(opus_rich) == "第一段第二段",
+          repr(bm._dyn_text(opus_rich)))
     check("无内容返回空串", bm._dyn_text(dyn("4")) == "")
     check("major.type 优先于 type_field",
           bm._dyn_major_type(archive("5", "BV1x", "t")) == "MAJOR_TYPE_ARCHIVE")

@@ -4,7 +4,7 @@
 设计要点（均按 2026-10 实测校准）
 --------------------------------
 * **动态为主、投稿兜底**：投稿发布后会立刻生成一条 ARCHIVE 动态，所以动态
-  接口最快；投稿列表（arc/search）有 2 分钟以上延迟，只每 N 轮查一次兜底，
+  接口最快；投稿列表（arc/search）可能有 2 分钟以上延迟，只每 N 轮查一次兜底，
   用来覆盖「关闭同步动态」的 UP。
 * 解析看 `modules.module_dynamic.major.type`，不是 `type_field`（实测两者不一致）；
   `opus.summary` 可能是富文本对象，必须强制转字符串。
@@ -308,7 +308,7 @@ async def _sync_uids(uids: list[str]) -> tuple[list[tuple[str, str]], int]:
                 if not dyn_ok:
                     lines.append("动态：拉取失败")
                 else:
-                    lines.append(f"【动态最新 {min(SYNC_SHOW, len(dynamics))} 条】")
+                    lines.append(f"[动态最新 {min(SYNC_SHOW, len(dynamics))} 条]")
                     for item in dynamics[:SYNC_SHOW]:
                         text = _clip(_dyn_text(item), 40) or "（无正文）"
                         lines.append(f"· {_dyn_time_text(item)} {text}")
@@ -319,7 +319,7 @@ async def _sync_uids(uids: list[str]) -> tuple[list[tuple[str, str]], int]:
                 if not vid_ok:
                     lines.append("投稿：拉取失败")
                 else:
-                    lines.append(f"【投稿最新 {min(SYNC_SHOW, len(videos))} 条】")
+                    lines.append(f"[投稿最新 {min(SYNC_SHOW, len(videos))} 条]")
                     for video in videos[:SYNC_SHOW]:
                         lines.append(f"· {_clip(_get_attr(video, 'title', ''), 40)}")
                         lines.append(
@@ -592,10 +592,17 @@ def _dyn_link(item) -> str:
     return f"https://t.bilibili.com/{_dyn_id(item)}"
 
 
-def _clip(text: str, limit: int) -> str:
-    text = " ".join(str(text or "").split())
-    return text if len(text) <= limit else text[:limit] + "…"
-
+def _clip(text: str, limit: int, keep_newline: bool = False) -> str:
+    text = str(text or "")
+    if keep_newline:
+        # 行内空白压成单空格，保留换行；去掉空行
+        lines = [" ".join(ln.split()) for ln in text.splitlines()]
+        text = "\n".join(ln for ln in lines if ln)
+    else:
+        text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
 
 def _video_id(video) -> str:
     return str(_get_attr(video, "bvid", "") or "")
@@ -691,14 +698,13 @@ def _explain(exc: Exception) -> str:
 def _fmt_dynamic(item) -> str:
     kind = _dyn_major_type(item).replace("MAJOR_TYPE_", "") or "动态"
     head = f"[{kind}] {_dyn_author(item)} {_dyn_time_text(item)}".strip()
-    body = _clip(_dyn_text(item), 200) or "（无正文）"
+    body = _clip(_dyn_text(item), 200, keep_newline=True) or "（无正文）"
     lines = [head, body]
     images = _dyn_images(item)
     if images:
         lines.append(f"（{len(images)} 张图）")
     lines.append(_dyn_link(item))
     return "\n".join(lines)
-
 
 def _fmt_video(video) -> str:
     title = _clip(_get_attr(video, "title", ""), 80)
@@ -710,14 +716,14 @@ def _compose(new_dyn: list, new_vid: list) -> str | None:
     # 列表是升序（旧→新），只展示最新的几条：取尾部
     if new_dyn:
         shown = new_dyn[-MAX_ITEMS_PER_MSG:]
-        parts = [f"【动态更新 ×{len(new_dyn)}】"]
+        parts = [f"[动态更新 ×{len(new_dyn)}]"]
         parts.extend(_fmt_dynamic(x) for x in shown)
         if len(new_dyn) > len(shown):
             parts.append(f"…另有 {len(new_dyn) - len(shown)} 条较早的未展示")
         sections.append("\n".join(parts))
     if new_vid:
         shown_v = new_vid[-MAX_ITEMS_PER_MSG:]
-        parts_v = [f"【投稿更新 ×{len(new_vid)}】"]
+        parts_v = [f"[投稿更新 ×{len(new_vid)}]"]
         parts_v.extend(_fmt_video(v) for v in shown_v)
         if len(new_vid) > len(shown_v):
             parts_v.append(f"…另有 {len(new_vid) - len(shown_v)} 条较早的未展示")

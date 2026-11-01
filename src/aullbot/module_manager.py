@@ -205,10 +205,37 @@ class ModuleManager:
 
     # ---------- 展示 ----------
     def list_modules(self) -> str:
-        return "\n".join(
-            f"{'enabled ' if m.enabled else 'disabled'} {m.meta.name:<22} {m.meta.description}"
-            for m in self.modules.values()
-        )
+        """紧凑列表：只列模块名，按启用/禁用分组，避免 QQ 长行换行。
+
+        描述去 /module info <name> 看。
+        """
+        enabled = [m.meta.name for m in self.modules.values() if m.enabled]
+        disabled = [m.meta.name for m in self.modules.values() if not m.enabled]
+        if not enabled and not disabled:
+            return "没有已注册的模块"
+
+        def wrap(names: list[str], width: int = 28) -> list[str]:
+            lines, cur = [], ""
+            for name in names:
+                if cur and len(cur) + 1 + len(name) > width:
+                    lines.append(cur)
+                    cur = name
+                else:
+                    cur = f"{cur} {name}".strip()
+            if cur:
+                lines.append(cur)
+            return lines
+
+        out = [f"模块 {len(enabled) + len(disabled)} 个"
+               f"（启用 {len(enabled)} / 禁用 {len(disabled)}）", ""]
+        if enabled:
+            out.append("启用：")
+            out.extend(f"  {line}" for line in wrap(enabled))
+        if disabled:
+            out.append("禁用：")
+            out.extend(f"  {line}" for line in wrap(disabled))
+        out += ["", "/module info <name> 查看详情"]
+        return "\n".join(out)
 
     def commands_of(self, name: str) -> list[str]:
         return [c for c, o in self.command_owner.items() if o == name]

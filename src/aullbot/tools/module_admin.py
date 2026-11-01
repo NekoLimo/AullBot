@@ -23,6 +23,21 @@ admin 只是"本会话最高权限"，不足以开关影响整个进程的模块
 )
 
 
+HELP_TEXT = """模块管理（需要 root 权限）
+
+/module list              列出所有模块与开关状态（默认）
+/module info <name>       模块详情：版本、命令、工具、配置
+/module enable <name>     热启用（会触发模块的 on_load）
+/module disable <name>    热禁用（会取消该模块的后台任务）
+/module sync              重新扫描代码，刷新 modules_manifest.json
+/module help              显示本帮助
+
+说明：
+  · 开关会写进 bot_data/modules.json，重启后保持
+  · 停用模块后，它注册的命令和 AI 工具立即失效
+  · /module 本身不受开关影响，避免把自己锁死"""
+
+
 @command("/module")
 @require_role_async("root")   # 全局开关，必须全局权限；admin 是本会话最高权限，不够
 async def module_admin(args: str = "") -> str:
@@ -32,6 +47,10 @@ async def module_admin(args: str = "") -> str:
         return mm.list_modules()
 
     sub = parts[0]
+    if sub in ("help", "-h", "--help"):
+        return HELP_TEXT
+    if sub == "list":
+        return mm.list_modules()
     if sub == "info" and len(parts) == 2:
         return mm.info(parts[1])
     if sub == "enable" and len(parts) == 2:
@@ -48,10 +67,7 @@ async def module_admin(args: str = "") -> str:
             f"移除：{s['removed'] or '无'}\n"
             f"变更：{s['changed'] or '无'}"
         )
-    return (
-        "用法：/module [list | info <name> | enable <name> | "
-        "disable <name> | sync]"
-    )
+    return "未知子命令。用法见 /module help"
 
 
 @ai_tools("list_modules")

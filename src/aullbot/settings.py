@@ -95,7 +95,7 @@ def env_choice(name: str, default: str, choices: tuple[str, ...]) -> str:
 load_dotenv()
 
 # ---------------------------------------------------------------- 模型
-MODEL: str = env_str("LLM_MODEL", "deepseek-v4-pro")
+MODEL: str = env_str("LLM_MODEL", "deepseek-v4-flash")
 BASE_URL: str = env_str("LLM_BASE_URL", "https://api.deepseek.com")
 API_KEY: str = env_str("LLM_API_KEY", "")
 EFFORT: str = env_choice("LLM_EFFORT", "high", ("low", "high", "max"))
